@@ -52,7 +52,6 @@ def save_log_to_sheet(student_id, input_text, output_text):
 # ==============================================================================
 # 0.5. クッキーによる自動ID管理
 # ==============================================================================
-@st.cache_resource
 def get_cookie_manager():
     return stx.CookieManager()
     
