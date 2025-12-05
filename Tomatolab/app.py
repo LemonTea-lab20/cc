@@ -52,7 +52,8 @@ def save_log_to_sheet(student_id, input_text, output_text):
 # ==============================================================================
 # 0.5. クッキーによる自動ID管理 (修正版)
 # ==============================================================================
-@st.cache_resource(experimental_allow_widgets=True)
+# 【修正点】 (experimental_allow_widgets=True) を削除しました
+@st.cache_resource
 def get_cookie_manager():
     return stx.CookieManager()
 
@@ -65,18 +66,19 @@ if "student_id" not in st.session_state:
 
 # ロジック:
 # 1. クッキーから取れたら、それを採用
-# 2. クッキーが取れなくても、メモリ(session_state)に既にあれば、それを維持（ここが重要！）
+# 2. クッキーが取れなくても、メモリ(session_state)に既にあれば、それを維持
 # 3. どっちもなければ、新規発行
 
 if cookie_val:
     # クッキーが生きていればそれを採用
     final_id = cookie_val
 elif st.session_state.student_id:
-    # クッキーが一瞬見えなくても、さっきまで使っていたIDがあればそれを使う（再発行を防ぐ保険）
+    # クッキーが一瞬見えなくても、さっきまで使っていたIDがあればそれを使う
     final_id = st.session_state.student_id
 else:
     # クッキーもメモリもない（完全な初見さん）なら新規発行
     new_uuid = str(uuid.uuid4())[:8]
+    # 365日有効
     expires_at = datetime.datetime.now() + datetime.timedelta(days=365)
     cookie_manager.set("student_uuid", new_uuid, expires_at=expires_at)
     final_id = new_uuid
