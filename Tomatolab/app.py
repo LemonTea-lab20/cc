@@ -20,7 +20,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 st.set_page_config(layout="wide", page_title="Tomato AI", initial_sidebar_state="collapsed")
 load_dotenv()
 
-# --- ログ保存用関数（完成版） ---
+# --- ログ保存用関数 ---
 def save_log_to_sheet(student_id, input_text, output_text):
     """
     Googleスプレッドシートにログを追記する関数
@@ -35,8 +35,7 @@ def save_log_to_sheet(student_id, input_text, output_text):
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
 
-        # 2. シートを開く (※シート名は作成したものに合わせてください！)
-        # もしシート名が違う場合はここを書き換えてください
+        # 2. シートを開く
         sheet = client.open("AI_Chat_Log").sheet1 
 
         # 3. 書き込むデータ
@@ -46,18 +45,16 @@ def save_log_to_sheet(student_id, input_text, output_text):
         sheet.append_row([now, student_id, input_text, output_text])
         
     except Exception as e:
-        # エラーが起きてもアプリは止めない（ログ失敗で授業を止めないため）
+        # エラーが起きてもアプリは止めない
         print(f"Log Error: {e}")
 
 # ==============================================================================
-# 0.5. クッキーによる自動ID管理 (エラー修正済み)
+# 0.5. クッキーによる自動ID管理 (最終修正版)
 # ==============================================================================
-# 修正点: experimental_allow_widgets=True を削除しました
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager()
+# 【修正】キャッシュデコレータ(@st.cache_resource)を削除しました。これがエラーの原因でした。
+cookie_manager = stx.CookieManager()
 
-cookie_manager = get_cookie_manager()
+# クッキーを取得
 cookie_val = cookie_manager.get(cookie="student_uuid")
 
 # セッションステート（メモリ）にIDがない場合、初期化
@@ -298,7 +295,7 @@ st.markdown(f"""
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
-status_text = f"Device ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.chat_count}\n Ver 17.4.0 // PRTS Online"
+status_text = f"Device ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.chat_count}\n Ver 17.5.0 // PRTS Online"
 st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
