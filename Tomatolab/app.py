@@ -36,6 +36,7 @@ def save_log_to_sheet(student_id, input_text, output_text):
         client = gspread.authorize(creds)
 
         # 2. シートを開く (※シート名は作成したものに合わせてください！)
+        # もしシート名が違う場合はここを書き換えてください
         sheet = client.open("AI_Chat_Log").sheet1 
 
         # 3. 書き込むデータ
@@ -43,16 +44,15 @@ def save_log_to_sheet(student_id, input_text, output_text):
         
         # 4. 行を追加
         sheet.append_row([now, student_id, input_text, output_text])
-        # print(f"Log saved: {student_id}") # デバッグ用
         
     except Exception as e:
         # エラーが起きてもアプリは止めない（ログ失敗で授業を止めないため）
         print(f"Log Error: {e}")
 
 # ==============================================================================
-# 0.5. クッキーによる自動ID管理 (修正版)
+# 0.5. クッキーによる自動ID管理 (エラー修正済み)
 # ==============================================================================
-# 【修正点】 (experimental_allow_widgets=True) を削除しました
+# 修正点: experimental_allow_widgets=True を削除しました
 @st.cache_resource
 def get_cookie_manager():
     return stx.CookieManager()
@@ -64,16 +64,12 @@ cookie_val = cookie_manager.get(cookie="student_uuid")
 if "student_id" not in st.session_state:
     st.session_state.student_id = None
 
-# ロジック:
-# 1. クッキーから取れたら、それを採用
-# 2. クッキーが取れなくても、メモリ(session_state)に既にあれば、それを維持
-# 3. どっちもなければ、新規発行
-
+# ID決定ロジック
 if cookie_val:
     # クッキーが生きていればそれを採用
     final_id = cookie_val
 elif st.session_state.student_id:
-    # クッキーが一瞬見えなくても、さっきまで使っていたIDがあればそれを使う
+    # クッキーが一瞬見えなくても、さっきまで使っていたIDがあればそれを使う（再発行防止）
     final_id = st.session_state.student_id
 else:
     # クッキーもメモリもない（完全な初見さん）なら新規発行
@@ -99,6 +95,7 @@ if not st.session_state.logged_in:
     st.markdown(f"Device ID: `{st.session_state.student_id}`")
     st.caption("※端末固有IDにより自動識別中")
 
+    # secretsからパスワードを取得
     correct_password = st.secrets.get("APP_PASSWORD", None)
     
     col1, col2 = st.columns([2, 1])
@@ -120,18 +117,15 @@ if not st.session_state.logged_in:
 # ==============================================================================
 # 1. メインアプリ設定
 # ==============================================================================
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-
-PARTICLE_IMG_DARK = os.path.join(current_dir, "ro.png")
-PARTICLE_IMG_LIGHT = os.path.join(current_dir, "ba.png")
+PARTICLE_IMG_DARK = "罗德岛.png"
+PARTICLE_IMG_LIGHT = "巴别塔.png"
 WALLPAPER_IMG_DARK = None
 WALLPAPER_IMG_LIGHT = None
 
-# ↓ 修正: ランダム生成をやめて、Secretsの固定パスワードを使うように変更
+@st.cache_resource
 def get_server_image_key():
-    # secretsに設定がなければ "0000" になる
-    key = st.secrets.get("IMG_PASSWORD", "9203")
+    key = f"{random.randint(0, 9999):04d}"
+    print(f"KEY: {key}") 
     return key
 
 IMAGE_KEY = get_server_image_key()
@@ -164,6 +158,10 @@ with st.sidebar:
     uploaded_file = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'])
     if uploaded_file:
         st.image(uploaded_file, caption="Preview", use_column_width=True)
+
+    if st.button("Clear Log"):
+        st.session_state.messages = []
+        st.rerun()
 
 def get_image_base64(path):
     if path and os.path.exists(path):
@@ -300,7 +298,7 @@ st.markdown(f"""
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
-status_text = f"Device ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.chat_count}\n Ver 17.3.0 // PRTS Online"
+status_text = f"Device ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.chat_count}\n Ver 17.4.0 // PRTS Online"
 st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
