@@ -99,8 +99,11 @@ if not st.session_state.logged_in:
 # ==============================================================================
 # 1. メインアプリ設定
 # ==============================================================================
-PARTICLE_IMG_DARK = "罗德岛.png"
-PARTICLE_IMG_LIGHT = "巴别塔.png"
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+PARTICLE_IMG_DARK = os.path.join(current_dir, "ro.png")
+PARTICLE_IMG_LIGHT = os.path.join(current_dir, "ba.png")
 WALLPAPER_IMG_DARK = None
 WALLPAPER_IMG_LIGHT = None
 
