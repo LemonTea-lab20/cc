@@ -1,6 +1,6 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import extra_streamlit_components as stx  # クッキー用
+import extra_streamlit_components as stx
 import base64
 import os
 import time
@@ -15,28 +15,33 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ==============================================================================
-# 0. 環境設定
+# 0. 環境設定 & 定数定義 (ここを一番上に持ってくるのが修正ポイント)
 # ==============================================================================
 st.set_page_config(layout="wide", page_title="Tomato AI", initial_sidebar_state="collapsed")
 load_dotenv()
 
+# ★エラーの原因だった変数をここで定義
+ACCENT_COLOR = "#00C8FF"
+MAX_CHAT_LIMIT = 15
+MAX_IMAGE_LIMIT = 5
 SHEET_NAME = "AI_Chat_Log"
 
-# --- シート連携機能 ---
+# ==============================================================================
+# 1. シート連携機能
+# ==============================================================================
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     if "gcp_service_account" not in st.secrets:
-        # 生徒に見せないよう静かに終了
         return None
     creds_dict = st.secrets["gcp_service_account"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds)
 
-# 【高速化】ログイン時に1回だけ呼ばれる
 def get_initial_usage_count(user_uuid):
+    """ログイン時に1回だけシートを見に行って回数を確認"""
     try:
         client = get_gspread_client()
-        if not client: return 999
+        if not client: return 0
         
         sheet = client.open(SHEET_NAME).sheet1
         data = sheet.get_all_values()
@@ -48,7 +53,7 @@ def get_initial_usage_count(user_uuid):
         
         for row in data:
             if len(row) > 1:
-                # UUIDの一致を確認
+                # 日付とUUIDの一致を確認
                 if target_date in row[0] and str(user_uuid) == str(row[1]): 
                     count += 1
         return count
@@ -57,6 +62,7 @@ def get_initial_usage_count(user_uuid):
         return 0
 
 def save_log_to_sheet(user_uuid, input_text, output_text):
+    """ログ保存"""
     try:
         client = get_gspread_client()
         if not client: return
@@ -67,13 +73,12 @@ def save_log_to_sheet(user_uuid, input_text, output_text):
         print(f"Log Error: {e}")
 
 # ==============================================================================
-# 0.5. クッキーによる自動ID管理 (ここを復活)
+# 2. クッキーID管理 (入力なし・自動発行)
 # ==============================================================================
-# key="cookie_manager" でリロード時のID飛びを防ぐ
 cookie_manager = stx.CookieManager(key="cookie_manager")
-
 cookie_val = cookie_manager.get(cookie="student_uuid")
 
+# セッション初期化
 if "student_id" not in st.session_state:
     st.session_state.student_id = None
 if "usage_count" not in st.session_state:
@@ -85,32 +90,29 @@ if "logged_in" not in st.session_state:
 if cookie_val:
     final_id = cookie_val
 elif st.session_state.student_id:
-    # クッキーが一瞬読み取れなくてもメモリにあれば維持
     final_id = st.session_state.student_id
 else:
-    # 完全新規（UUID発行）
+    # 新規発行
     new_uuid = str(uuid.uuid4())[:8]
     expires_at = datetime.datetime.now() + datetime.timedelta(days=365)
     cookie_manager.set("student_uuid", new_uuid, expires_at=expires_at)
     final_id = new_uuid
     time.sleep(0.5)
 
-# IDを確定
 st.session_state.student_id = final_id
 
 # ==============================================================================
-# 0.8. 門番（パスワードのみ・ID入力なし）
+# 3. 門番（パスワードのみ）
 # ==============================================================================
 if not st.session_state.logged_in:
     st.title("🔒 SECURITY GATE")
     st.markdown("Authorized Access Only")
     
-    # ここでこっそりIDを表示（先生の確認用）
-    # st.caption(f"Your Device ID: {final_id}") 
+    # 先生確認用ID表示（本番では消してもOK）
+    # st.caption(f"Device ID: {final_id}")
 
     correct_password = st.secrets.get("APP_PASSWORD", None)
     
-    # パスワード入力のみ（ID入力欄は削除）
     col1, col2 = st.columns([2, 1])
     with col1:
         st.info("授業用AIシステムへようこそ。合言葉を入力して接続してください。")
@@ -124,7 +126,7 @@ if not st.session_state.logged_in:
             # ログイン成功
             st.session_state.logged_in = True
             
-            # ★ログインした瞬間に、シートから「このUUIDの今日の回数」を取得
+            # ★ここで1回だけシートを見に行く
             if final_id:
                 with st.spinner("Loading Profile..."):
                     initial_count = get_initial_usage_count(final_id)
@@ -138,7 +140,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==============================================================================
-# 1. メインアプリ設定
+# 4. メインアプリ処理
 # ==============================================================================
 PARTICLE_IMG_DARK = "罗德岛.png"
 PARTICLE_IMG_LIGHT = "巴别塔.png"
@@ -152,8 +154,6 @@ def get_server_image_key():
     return key
 
 IMAGE_KEY = get_server_image_key()
-MAX_CHAT_LIMIT = 15
-MAX_IMAGE_LIMIT = 5
 
 if "chat_count" not in st.session_state: st.session_state.chat_count = 0
 if "image_count" not in st.session_state: st.session_state.image_count = 0
@@ -173,7 +173,7 @@ def toggle_mode():
 
 with st.sidebar:
     st.title("TERMINAL CONTROL")
-    # 生徒にはIDを見せる必要があれば表示、なければ削除してもOK
+    # 生徒にはIDを見せる必要があれば表示
     st.markdown(f"**Device ID:** `{st.session_state.student_id}`")
     
     # 残り回数の表示
@@ -190,7 +190,6 @@ with st.sidebar:
     if st.button("Logout"):
         st.session_state.messages = []
         st.session_state.logged_in = False
-        # クッキーIDは維持するが、再ログインさせる
         st.rerun()
 
 def get_image_base64(path):
@@ -206,6 +205,7 @@ if is_dark_mode:
     bg_color = "#000000"
     p_color_main = "#ffffff"
     p_color_sub = "#444444"
+    # CSS変数の定義（ここより前で変数を定義しておく必要があった）
     css_text_color = "#eeeeee"
     css_bg_rgba = "rgba(0, 0, 0, 0.6)"
     css_input_bg = "rgba(10, 10, 10, 0.9)"
@@ -298,7 +298,7 @@ html_template = """
 final_html = html_template.replace("__PARTICLE_SRC__", particle_src).replace("__BG_STYLE__", bg_style).replace("__P_COLOR_1__", p_color_main).replace("__P_COLOR_2__", p_color_sub)
 components.html(final_html, height=0)
 
-# CSS
+# CSS (ここで ACCENT_COLOR を使うので、これより前で定義されている必要がある)
 st.markdown(f"""
 <style>
     iframe {{ position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; border: none; pointer-events: auto !important; }}
@@ -323,12 +323,12 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. メイン処理
+# 5. メイン処理 (チャットUI)
 # ==============================================================================
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
-status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 18.3.0 // PRTS Online"
+status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 18.5.0 // PRTS Online"
 st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
@@ -354,8 +354,7 @@ if prompt := st.chat_input("Command..."):
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
         
-        # ★重要: チャット回数は「メモリ内（st.session_state.usage_count）」で判定
-        # シートを見に行かないので爆速です。
+        # チャット回数（メモリ）
         elif not is_gen_img_req and st.session_state.usage_count >= MAX_CHAT_LIMIT:
             error_msg = "⚠️ Daily chat limit reached. (本日の制限回数を超えました)"
             message_placeholder.error(error_msg)
@@ -397,10 +396,9 @@ if prompt := st.chat_input("Command..."):
                     message_placeholder.markdown(full_response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
                     
-                    # メモリ上のカウントをアップ
                     st.session_state.usage_count += 1
                     
-                    # ログ保存（書き込み）
+                    # ログ保存
                     if st.session_state.student_id:
                         save_log_to_sheet(st.session_state.student_id, prompt, full_response)
                     
