@@ -142,8 +142,8 @@ if not st.session_state.logged_in:
 # ==============================================================================
 # 4. メインアプリ処理
 # ==============================================================================
-PARTICLE_IMG_DARK = "罗德岛.png"
-PARTICLE_IMG_LIGHT = "巴别塔.png"
+PARTICLE_IMG_DARK = "ro.png"
+PARTICLE_IMG_LIGHT = "ba.png"
 WALLPAPER_IMG_DARK = None
 WALLPAPER_IMG_LIGHT = None
 
