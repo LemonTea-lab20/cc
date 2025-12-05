@@ -52,31 +52,39 @@ def save_log_to_sheet(student_id, input_text, output_text):
 # ==============================================================================
 # 0.5. クッキーによる自動ID管理 (修正版)
 # ==============================================================================
-def get_manager():
-    # key="cookie_manager" をつけることで、リロードしても同じロボットを使うようにする
-    return stx.CookieManager(key="cookie_manager")
+@st.cache_resource(experimental_allow_widgets=True)
+def get_cookie_manager():
+    return stx.CookieManager()
 
-cookie_manager = get_manager()
+cookie_manager = get_cookie_manager()
+cookie_val = cookie_manager.get(cookie="student_uuid")
 
-# まずクッキーを見に行く
-cookie_id = cookie_manager.get(cookie="student_uuid")
+# セッションステート（メモリ）にIDがない場合、初期化
+if "student_id" not in st.session_state:
+    st.session_state.student_id = None
 
-# まだクッキーがない場合のみ、新しく発行する
-if not cookie_id:
-    # 既にセッションにIDがあればそれを使う（リロード直後の対策）
-    if "student_id" in st.session_state and st.session_state.student_id:
-        cookie_id = st.session_state.student_id
-    else:
-        # 本当に初対面なら新規発行
-        new_uuid = str(uuid.uuid4())[:8]
-        expires_at = datetime.datetime.now() + datetime.timedelta(days=365)
-        # クッキーに保存
-        cookie_manager.set("student_uuid", new_uuid, expires_at=expires_at)
-        cookie_id = new_uuid
-        time.sleep(0.5) # 保存されるのを少し待つ
+# ロジック:
+# 1. クッキーから取れたら、それを採用
+# 2. クッキーが取れなくても、メモリ(session_state)に既にあれば、それを維持（ここが重要！）
+# 3. どっちもなければ、新規発行
 
-# セッションにも入れておく
-st.session_state.student_id = cookie_id
+if cookie_val:
+    # クッキーが生きていればそれを採用
+    final_id = cookie_val
+elif st.session_state.student_id:
+    # クッキーが一瞬見えなくても、さっきまで使っていたIDがあればそれを使う（再発行を防ぐ保険）
+    final_id = st.session_state.student_id
+else:
+    # クッキーもメモリもない（完全な初見さん）なら新規発行
+    new_uuid = str(uuid.uuid4())[:8]
+    expires_at = datetime.datetime.now() + datetime.timedelta(days=365)
+    cookie_manager.set("student_uuid", new_uuid, expires_at=expires_at)
+    final_id = new_uuid
+    # 念のため少し待つ
+    time.sleep(0.5)
+
+# 確定したIDをセッションに保存
+st.session_state.student_id = final_id
 
 # ==============================================================================
 # 0.8. 門番（パスワード認証）
