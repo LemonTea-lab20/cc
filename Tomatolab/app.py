@@ -1,6 +1,6 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import extra_streamlit_components as stx
+import extra_streamlit_components as stx  # クッキー用
 import base64
 import os
 import time
@@ -20,95 +20,121 @@ from oauth2client.service_account import ServiceAccountCredentials
 st.set_page_config(layout="wide", page_title="Tomato AI", initial_sidebar_state="collapsed")
 load_dotenv()
 
-# --- ログ保存用関数 ---
-def save_log_to_sheet(student_id, input_text, output_text):
-    """
-    Googleスプレッドシートにログを追記する関数
-    """
+SHEET_NAME = "AI_Chat_Log"
+
+# --- シート連携機能 ---
+def get_gspread_client():
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    if "gcp_service_account" not in st.secrets:
+        # 生徒に見せないよう静かに終了
+        return None
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    return gspread.authorize(creds)
+
+# 【高速化】ログイン時に1回だけ呼ばれる
+def get_initial_usage_count(user_uuid):
     try:
-        # 1. 認証情報の準備
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        client = get_gspread_client()
+        if not client: return 999
         
-        # Secretsから認証情報を取得
-        # 注意: Secretsの設定名は [gcp_service_account] にしてください
-        creds_dict = st.secrets["gcp_service_account"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-
-        # 2. シートを開く
-        sheet = client.open("AI_Chat_Log").sheet1 
-
-        # 3. 書き込むデータ
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sheet = client.open(SHEET_NAME).sheet1
+        data = sheet.get_all_values()
         
-        # 4. 行を追加
-        sheet.append_row([now, student_id, input_text, output_text])
+        if len(data) < 2: return 0
+            
+        count = 0
+        target_date = datetime.datetime.now().strftime("%Y-%m-%d")
         
+        for row in data:
+            if len(row) > 1:
+                # UUIDの一致を確認
+                if target_date in row[0] and str(user_uuid) == str(row[1]): 
+                    count += 1
+        return count
     except Exception as e:
-        # エラーが起きてもアプリは止めない
+        print(f"Count Check Error: {e}")
+        return 0
+
+def save_log_to_sheet(user_uuid, input_text, output_text):
+    try:
+        client = get_gspread_client()
+        if not client: return
+        sheet = client.open(SHEET_NAME).sheet1
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sheet.append_row([now, user_uuid, input_text, output_text])
+    except Exception as e:
         print(f"Log Error: {e}")
 
 # ==============================================================================
-# 0.5. クッキーによる自動ID管理 (最終修正版)
+# 0.5. クッキーによる自動ID管理 (ここを復活)
 # ==============================================================================
-# 【修正】キャッシュデコレータ(@st.cache_resource)を削除しました。これがエラーの原因でした。
-cookie_manager = stx.CookieManager()
+# key="cookie_manager" でリロード時のID飛びを防ぐ
+cookie_manager = stx.CookieManager(key="cookie_manager")
 
-# クッキーを取得
 cookie_val = cookie_manager.get(cookie="student_uuid")
 
-# セッションステート（メモリ）にIDがない場合、初期化
 if "student_id" not in st.session_state:
     st.session_state.student_id = None
-
-# ID決定ロジック
-if cookie_val:
-    # クッキーが生きていればそれを採用
-    final_id = cookie_val
-elif st.session_state.student_id:
-    # クッキーが一瞬見えなくても、さっきまで使っていたIDがあればそれを使う（再発行防止）
-    final_id = st.session_state.student_id
-else:
-    # クッキーもメモリもない（完全な初見さん）なら新規発行
-    new_uuid = str(uuid.uuid4())[:8]
-    # 365日有効
-    expires_at = datetime.datetime.now() + datetime.timedelta(days=365)
-    cookie_manager.set("student_uuid", new_uuid, expires_at=expires_at)
-    final_id = new_uuid
-    # 念のため少し待つ
-    time.sleep(0.5)
-
-# 確定したIDをセッションに保存
-st.session_state.student_id = final_id
-
-# ==============================================================================
-# 0.8. 門番（パスワード認証）
-# ==============================================================================
+if "usage_count" not in st.session_state:
+    st.session_state.usage_count = 0
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
+# ID決定ロジック
+if cookie_val:
+    final_id = cookie_val
+elif st.session_state.student_id:
+    # クッキーが一瞬読み取れなくてもメモリにあれば維持
+    final_id = st.session_state.student_id
+else:
+    # 完全新規（UUID発行）
+    new_uuid = str(uuid.uuid4())[:8]
+    expires_at = datetime.datetime.now() + datetime.timedelta(days=365)
+    cookie_manager.set("student_uuid", new_uuid, expires_at=expires_at)
+    final_id = new_uuid
+    time.sleep(0.5)
+
+# IDを確定
+st.session_state.student_id = final_id
+
+# ==============================================================================
+# 0.8. 門番（パスワードのみ・ID入力なし）
+# ==============================================================================
 if not st.session_state.logged_in:
     st.title("🔒 SECURITY GATE")
-    st.markdown(f"Device ID: `{st.session_state.student_id}`")
-    st.caption("※端末固有IDにより自動識別中")
+    st.markdown("Authorized Access Only")
+    
+    # ここでこっそりIDを表示（先生の確認用）
+    # st.caption(f"Your Device ID: {final_id}") 
 
-    # secretsからパスワードを取得
     correct_password = st.secrets.get("APP_PASSWORD", None)
     
+    # パスワード入力のみ（ID入力欄は削除）
     col1, col2 = st.columns([2, 1])
     with col1:
-        input_pass = st.text_input("Access Code", type="password")
+        st.info("授業用AIシステムへようこそ。合言葉を入力して接続してください。")
+    with col2:
+        input_pass = st.text_input("Access Code (合言葉)", type="password")
     
-    if st.button("CONNECT"):
+    if st.button("CONNECT / 接続開始"):
         if not correct_password:
-             st.error("Error: APP_PASSWORD not set in Secrets.")
+             st.error("システム設定エラー: APP_PASSWORDが設定されていません。")
         elif input_pass == correct_password:
+            # ログイン成功
             st.session_state.logged_in = True
-            st.success("Access Granted.")
-            time.sleep(0.5)
+            
+            # ★ログインした瞬間に、シートから「このUUIDの今日の回数」を取得
+            if final_id:
+                with st.spinner("Loading Profile..."):
+                    initial_count = get_initial_usage_count(final_id)
+                    st.session_state.usage_count = initial_count
+            
+            st.success(f"Access Granted. (Today's Usage: {st.session_state.usage_count})")
+            time.sleep(1)
             st.rerun()
         else:
-            st.error("Invalid Code.")
+            st.error("Access Codeが間違っています。")
     st.stop()
 
 # ==============================================================================
@@ -126,7 +152,6 @@ def get_server_image_key():
     return key
 
 IMAGE_KEY = get_server_image_key()
-ACCENT_COLOR = "#00C8FF"
 MAX_CHAT_LIMIT = 15
 MAX_IMAGE_LIMIT = 5
 
@@ -148,16 +173,24 @@ def toggle_mode():
 
 with st.sidebar:
     st.title("TERMINAL CONTROL")
+    # 生徒にはIDを見せる必要があれば表示、なければ削除してもOK
     st.markdown(f"**Device ID:** `{st.session_state.student_id}`")
+    
+    # 残り回数の表示
+    remaining = MAX_CHAT_LIMIT - st.session_state.usage_count
+    if remaining < 0: remaining = 0
+    st.metric("Remaining Chats", f"{remaining} / {MAX_CHAT_LIMIT}")
+    
     is_dark_mode = st.toggle("Dark Mode", value=st.session_state.dark_mode, key="mode_toggle", on_change=toggle_mode)
     st.divider()
-    st.header("DATA INPUT")
     uploaded_file = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'])
     if uploaded_file:
         st.image(uploaded_file, caption="Preview", use_column_width=True)
 
-    if st.button("Clear Log"):
+    if st.button("Logout"):
         st.session_state.messages = []
+        st.session_state.logged_in = False
+        # クッキーIDは維持するが、再ログインさせる
         st.rerun()
 
 def get_image_base64(path):
@@ -295,7 +328,7 @@ st.markdown(f"""
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
-status_text = f"Device ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.chat_count}\n Ver 17.5.0 // PRTS Online"
+status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 18.3.0 // PRTS Online"
 st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
@@ -315,14 +348,19 @@ if prompt := st.chat_input("Command..."):
         full_response = ""
         ai_response_content = ""
 
+        # 画像生成のリミット（メモリ）
         if is_gen_img_req and st.session_state.image_count >= MAX_IMAGE_LIMIT:
             error_msg = "⚠️ Image generation limit reached."
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
-        elif not is_gen_img_req and st.session_state.chat_count >= MAX_CHAT_LIMIT:
-            error_msg = "⚠️ Chat limit reached."
+        
+        # ★重要: チャット回数は「メモリ内（st.session_state.usage_count）」で判定
+        # シートを見に行かないので爆速です。
+        elif not is_gen_img_req and st.session_state.usage_count >= MAX_CHAT_LIMIT:
+            error_msg = "⚠️ Daily chat limit reached. (本日の制限回数を超えました)"
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
+            
         elif api_key and has_openai_lib:
             try:
                 client = OpenAI(api_key=api_key)
@@ -358,8 +396,16 @@ if prompt := st.chat_input("Command..."):
                             message_placeholder.markdown(full_response + "▌")
                     message_placeholder.markdown(full_response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
-                    st.session_state.chat_count += 1
+                    
+                    # メモリ上のカウントをアップ
+                    st.session_state.usage_count += 1
+                    
+                    # ログ保存（書き込み）
+                    if st.session_state.student_id:
+                        save_log_to_sheet(st.session_state.student_id, prompt, full_response)
+                    
                     ai_response_content = full_response
+                    
             except Exception as e:
                 error_msg = f"Error: {str(e)}"
                 message_placeholder.error(error_msg)
@@ -369,9 +415,6 @@ if prompt := st.chat_input("Command..."):
             message_placeholder.markdown(dummy_response)
             st.session_state.messages.append({"role": "assistant", "content": dummy_response})
             ai_response_content = dummy_response
-        
-        # ログ保存（スプレッドシートへ書き込み）
-        save_log_to_sheet(st.session_state.student_id, prompt, ai_response_content)
 
     time.sleep(0.5)
     st.rerun()
