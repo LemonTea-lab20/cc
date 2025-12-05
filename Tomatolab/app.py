@@ -50,21 +50,32 @@ def save_log_to_sheet(student_id, input_text, output_text):
         print(f"Log Error: {e}")
 
 # ==============================================================================
-# 0.5. クッキーによる自動ID管理
+# 0.5. クッキーによる自動ID管理 (修正版)
 # ==============================================================================
-def get_cookie_manager():
-    return stx.CookieManager()
-    
-cookie_manager = get_cookie_manager()
+def get_manager():
+    # key="cookie_manager" をつけることで、リロードしても同じロボットを使うようにする
+    return stx.CookieManager(key="cookie_manager")
+
+cookie_manager = get_manager()
+
+# まずクッキーを見に行く
 cookie_id = cookie_manager.get(cookie="student_uuid")
 
+# まだクッキーがない場合のみ、新しく発行する
 if not cookie_id:
-    new_uuid = str(uuid.uuid4())[:8]
-    expires_at = datetime.datetime.now() + datetime.timedelta(days=365)
-    cookie_manager.set("student_uuid", new_uuid, expires_at=expires_at)
-    cookie_id = new_uuid
-    time.sleep(0.5)
+    # 既にセッションにIDがあればそれを使う（リロード直後の対策）
+    if "student_id" in st.session_state and st.session_state.student_id:
+        cookie_id = st.session_state.student_id
+    else:
+        # 本当に初対面なら新規発行
+        new_uuid = str(uuid.uuid4())[:8]
+        expires_at = datetime.datetime.now() + datetime.timedelta(days=365)
+        # クッキーに保存
+        cookie_manager.set("student_uuid", new_uuid, expires_at=expires_at)
+        cookie_id = new_uuid
+        time.sleep(0.5) # 保存されるのを少し待つ
 
+# セッションにも入れておく
 st.session_state.student_id = cookie_id
 
 # ==============================================================================
