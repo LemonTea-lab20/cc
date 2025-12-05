@@ -1,6 +1,5 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import extra_streamlit_components as stx
 import base64
 import os
 import time
@@ -15,12 +14,11 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ==============================================================================
-# 0. 環境設定 & 定数定義 (ここを一番上に持ってくるのが修正ポイント)
+# 0. 環境設定 & 定数定義
 # ==============================================================================
 st.set_page_config(layout="wide", page_title="Tomato AI", initial_sidebar_state="collapsed")
 load_dotenv()
 
-# ★エラーの原因だった変数をここで定義
 ACCENT_COLOR = "#00C8FF"
 MAX_CHAT_LIMIT = 15
 MAX_IMAGE_LIMIT = 5
@@ -53,7 +51,6 @@ def get_initial_usage_count(user_uuid):
         
         for row in data:
             if len(row) > 1:
-                # 日付とUUIDの一致を確認
                 if target_date in row[0] and str(user_uuid) == str(row[1]): 
                     count += 1
         return count
@@ -73,11 +70,8 @@ def save_log_to_sheet(user_uuid, input_text, output_text):
         print(f"Log Error: {e}")
 
 # ==============================================================================
-# 2. クッキーID管理 (入力なし・自動発行)
+# 2. ID管理 (URL埋め込み方式・安定版)
 # ==============================================================================
-cookie_manager = stx.CookieManager(key="cookie_manager")
-cookie_val = cookie_manager.get(cookie="student_uuid")
-
 # セッション初期化
 if "student_id" not in st.session_state:
     st.session_state.student_id = None
@@ -86,18 +80,27 @@ if "usage_count" not in st.session_state:
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
+# --- URLからIDを取得 ---
+try:
+    # 新しいStreamlitの書き方
+    query_params = st.query_params
+    url_id = query_params.get("id", None)
+except:
+    # 古いバージョンの書き方
+    query_params = st.experimental_get_query_params()
+    url_id = query_params.get("id", [None])[0]
+
 # ID決定ロジック
-if cookie_val:
-    final_id = cookie_val
-elif st.session_state.student_id:
-    final_id = st.session_state.student_id
+if url_id:
+    # URLにIDがあればそれを使う（100%確実）
+    final_id = url_id
 else:
-    # 新規発行
-    new_uuid = str(uuid.uuid4())[:8]
-    expires_at = datetime.datetime.now() + datetime.timedelta(days=365)
-    cookie_manager.set("student_uuid", new_uuid, expires_at=expires_at)
-    final_id = new_uuid
-    time.sleep(0.5)
+    # URLにIDがないなら、新規発行してURLに書き込む
+    final_id = str(uuid.uuid4())[:8]
+    try:
+        st.query_params["id"] = final_id
+    except:
+        st.experimental_set_query_params(id=final_id)
 
 st.session_state.student_id = final_id
 
@@ -108,9 +111,6 @@ if not st.session_state.logged_in:
     st.title("🔒 SECURITY GATE")
     st.markdown("Authorized Access Only")
     
-    # 先生確認用ID表示（本番では消してもOK）
-    # st.caption(f"Device ID: {final_id}")
-
     correct_password = st.secrets.get("APP_PASSWORD", None)
     
     col1, col2 = st.columns([2, 1])
@@ -126,7 +126,7 @@ if not st.session_state.logged_in:
             # ログイン成功
             st.session_state.logged_in = True
             
-            # ★ここで1回だけシートを見に行く
+            # シートから回数取得
             if final_id:
                 with st.spinner("Loading Profile..."):
                     initial_count = get_initial_usage_count(final_id)
@@ -142,8 +142,8 @@ if not st.session_state.logged_in:
 # ==============================================================================
 # 4. メインアプリ処理
 # ==============================================================================
-PARTICLE_IMG_DARK = "ro.png"
-PARTICLE_IMG_LIGHT = "ba.png"
+PARTICLE_IMG_DARK = "罗德岛.png"
+PARTICLE_IMG_LIGHT = "巴别塔.png"
 WALLPAPER_IMG_DARK = None
 WALLPAPER_IMG_LIGHT = None
 
@@ -173,10 +173,8 @@ def toggle_mode():
 
 with st.sidebar:
     st.title("TERMINAL CONTROL")
-    # 生徒にはIDを見せる必要があれば表示
     st.markdown(f"**Device ID:** `{st.session_state.student_id}`")
     
-    # 残り回数の表示
     remaining = MAX_CHAT_LIMIT - st.session_state.usage_count
     if remaining < 0: remaining = 0
     st.metric("Remaining Chats", f"{remaining} / {MAX_CHAT_LIMIT}")
@@ -205,7 +203,6 @@ if is_dark_mode:
     bg_color = "#000000"
     p_color_main = "#ffffff"
     p_color_sub = "#444444"
-    # CSS変数の定義（ここより前で変数を定義しておく必要があった）
     css_text_color = "#eeeeee"
     css_bg_rgba = "rgba(0, 0, 0, 0.6)"
     css_input_bg = "rgba(10, 10, 10, 0.9)"
@@ -298,7 +295,7 @@ html_template = """
 final_html = html_template.replace("__PARTICLE_SRC__", particle_src).replace("__BG_STYLE__", bg_style).replace("__P_COLOR_1__", p_color_main).replace("__P_COLOR_2__", p_color_sub)
 components.html(final_html, height=0)
 
-# CSS (ここで ACCENT_COLOR を使うので、これより前で定義されている必要がある)
+# CSS
 st.markdown(f"""
 <style>
     iframe {{ position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; border: none; pointer-events: auto !important; }}
@@ -328,7 +325,7 @@ st.markdown(f"""
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
-status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 18.5.0 // PRTS Online"
+status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 19.0.0 // PRTS Online"
 st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
@@ -348,13 +345,11 @@ if prompt := st.chat_input("Command..."):
         full_response = ""
         ai_response_content = ""
 
-        # 画像生成のリミット（メモリ）
         if is_gen_img_req and st.session_state.image_count >= MAX_IMAGE_LIMIT:
             error_msg = "⚠️ Image generation limit reached."
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
         
-        # チャット回数（メモリ）
         elif not is_gen_img_req and st.session_state.usage_count >= MAX_CHAT_LIMIT:
             error_msg = "⚠️ Daily chat limit reached. (本日の制限回数を超えました)"
             message_placeholder.error(error_msg)
@@ -398,7 +393,6 @@ if prompt := st.chat_input("Command..."):
                     
                     st.session_state.usage_count += 1
                     
-                    # ログ保存
                     if st.session_state.student_id:
                         save_log_to_sheet(st.session_state.student_id, prompt, full_response)
                     
