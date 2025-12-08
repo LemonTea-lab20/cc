@@ -24,7 +24,7 @@ MAX_IMAGE_LIMIT = 5
 # 画像ファイル（app.py と同じフォルダに ba.png / ro.png がある前提）
 BASE_DIR = Path(__file__).parent
 PARTICLE_IMG_DARK = "ro.png"   # 粒子用画像（ダーク）
-PARTICLE_IMG_LIGHT = "ro.png"  # 粒子用画像（ライトも同じでOKならこれ）
+PARTICLE_IMG_LIGHT = "ba.png"  # 粒子用画像（ライトも同じでOKならこれ）
 WALLPAPER_IMG_DARK = None      # 必要なら "ba.png" など
 WALLPAPER_IMG_LIGHT = None
 
@@ -172,14 +172,14 @@ html_template = """
    ＃＃粒子
     <script>
         const CONFIG = {
-            particleSize:3,
+            particleSize:4,
             particleMargin: 1,
             repulsionRadius: 80,
             repulsionForce: 3.0,
             friction: 0.12,
             returnSpeed: 0.02,
             samplingStep: 2,
-            maxDisplayRatio:0.8
+            maxDisplayRatio:0.65
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
         const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
