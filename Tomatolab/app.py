@@ -8,6 +8,7 @@ import logging
 import datetime
 import uuid
 import json
+import re
 from dotenv import load_dotenv
 
 # --- Google Sheets 連携用ライブラリ ---
@@ -23,7 +24,8 @@ load_dotenv()
 ACCENT_COLOR = "#00C8FF"
 MAX_CHAT_LIMIT = 15
 MAX_IMAGE_LIMIT = 5
-SHEET_NAME = "AI_Chat_Log"
+LOG_SHEET_NAME = "AI_Chat_Log"        # 利用ログ
+STUDENT_SHEET_NAME = "AI_Student_Master"  # アカウントマスタ
 
 # ==============================================================================
 # 1. シート連携機能
@@ -36,16 +38,26 @@ def get_gspread_client():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds)
 
-def get_initial_usage_count(user_uuid):
-    """指定UUIDの「本日の使用回数」をシートからカウント"""
+def get_log_sheet():
+    client = get_gspread_client()
+    if not client:
+        return None
+    return client.open(LOG_SHEET_NAME).sheet1
+
+def get_student_sheet():
+    client = get_gspread_client()
+    if not client:
+        return None
+    return client.open(STUDENT_SHEET_NAME).sheet1
+
+def get_initial_usage_count(student_id: str) -> int:
+    """指定IDの「本日の使用回数」をログシートからカウント"""
     try:
-        client = get_gspread_client()
-        if not client:
+        sheet = get_log_sheet()
+        if not sheet:
             return 0
         
-        sheet = client.open(SHEET_NAME).sheet1
         data = sheet.get_all_values()
-        
         if len(data) < 2:
             return 0
             
@@ -54,30 +66,120 @@ def get_initial_usage_count(user_uuid):
         
         for row in data:
             if len(row) > 1:
-                # 日付とUUIDの一致を確認
-                if target_date in row[0] and str(user_uuid) == str(row[1]): 
+                # A列：日時文字列 / B列：student_id と想定
+                if target_date in row[0] and str(student_id) == str(row[1]):
                     count += 1
         return count
     except Exception as e:
         print(f"Count Check Error: {e}")
         return 0
 
-def save_log_to_sheet(user_uuid, input_text, output_text):
-    """ログ保存"""
+def save_log_to_sheet(student_id, input_text, output_text):
+    """利用ログ保存"""
     try:
-        client = get_gspread_client()
-        if not client:
+        sheet = get_log_sheet()
+        if not sheet:
             return
-        sheet = client.open(SHEET_NAME).sheet1
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        sheet.append_row([now, user_uuid, input_text, output_text])
+        sheet.append_row([now, student_id, input_text, output_text])
     except Exception as e:
         print(f"Log Error: {e}")
 
+def find_student_record(student_id: str):
+    """
+    アカウントマスタから student_id に対応するレコードを検索。
+    戻り値: (row_index, record_dict, header_list) or (None, None, header_list)
+    """
+    sheet = get_student_sheet()
+    if not sheet:
+        return None, None, []
+
+    header = sheet.row_values(1)
+    records = sheet.get_all_records()  # 2行目以降
+
+    for idx, rec in enumerate(records, start=2):  # 行番号は2から
+        if str(rec.get("student_id")) == str(student_id):
+            return idx, rec, header
+    return None, None, header
+
+def update_student_pin_and_login(row_index: int, new_pin: str, is_new: bool = False):
+    """
+    指定行の pin / created_at / last_login を更新
+    is_new=True のときは created_at もセット（空欄のときのみ）
+    """
+    sheet = get_student_sheet()
+    if not sheet:
+        return
+
+    header = sheet.row_values(1)
+
+    def col_idx(col_name):
+        return header.index(col_name) + 1 if col_name in header else None
+
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    pin_col = col_idx("pin")
+    if pin_col:
+        sheet.update_cell(row_index, pin_col, new_pin)
+
+    if is_new:
+        created_col = col_idx("created_at")
+        if created_col:
+            # すでに何か入っていたら上書きしない運用でもOKだが、ここでは上書きしてしまう
+            sheet.update_cell(row_index, created_col, now)
+
+    last_login_col = col_idx("last_login")
+    if last_login_col:
+        sheet.update_cell(row_index, last_login_col, now)
+
+def update_last_login_only(row_index: int):
+    """ログイン成功時に last_login だけ更新"""
+    sheet = get_student_sheet()
+    if not sheet:
+        return
+    header = sheet.row_values(1)
+    if "last_login" in header:
+        col = header.index("last_login") + 1
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sheet.update_cell(row_index, col, now)
+
 # ==============================================================================
-# 2. ID管理 (ローカルストレージ + URL ハイブリッド方式)
+# 2. IDフォーマットチェック（1111形式）
 # ==============================================================================
-# セッション初期化
+def validate_and_parse_id(raw_id: str):
+    """
+    '1111' 形式で、かつ 学年1〜3 / 組1〜3 / 番号1〜40 の範囲かチェック。
+    OKなら (grade, klass, number) を返し、NGなら None を返す。
+    """
+    s = raw_id.strip()
+    if not (len(s) == 4 and s.isdigit()):
+        return None
+    grade = int(s[0])
+    klass = int(s[1])
+    number = int(s[2:4])
+
+    if grade not in (1, 2, 3):
+        return None
+    if klass not in (1, 2, 3):
+        return None
+    if not (1 <= number <= 40):
+        return None
+
+    return grade, klass, number
+
+def validate_pin_format(pin: str):
+    """
+    PINの形式チェック（例：数字4桁のみ許可）。
+    条件を変えたいときはここを書き換えればOK。
+    """
+    p = pin.strip()
+    if len(p) != 4 or not p.isdigit():
+        return False
+    return True
+
+# ==============================================================================
+# 3. セッション初期化
+# ==============================================================================
 if "student_id" not in st.session_state:
     st.session_state.student_id = None
 if "usage_count" not in st.session_state:
@@ -85,106 +187,141 @@ if "usage_count" not in st.session_state:
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-# URLからIDを取得（常に文字列 or None になるようにする）★修正ポイント
-try:
-    query_params = st.query_params
-except Exception:
-    query_params = st.experimental_get_query_params()
-
-raw_id = query_params.get("id")
-url_id = None
-if isinstance(raw_id, list):
-    url_id = raw_id[0] if raw_id else None
-else:
-    url_id = raw_id
-
-# --- ここが新機能：JavaScriptでローカルストレージを操作 ---
-# Python側で新しいIDを生成しておく（JS側で使うため）
-new_generated_id = str(uuid.uuid4())[:8]
-
-# JavaScriptコード
-# 1. URLにIDがない場合 -> ローカルストレージを探す -> あればリダイレクト、なければ新規発行してリダイレクト
-# 2. URLにIDがある場合 -> ローカルストレージにそのIDを保存（同期）
-js_code = f"""
-<script>
-    const STORAGE_KEY = "tomato_lab_student_id";
-    const currentUrlParams = new URLSearchParams(window.location.search);
-    const urlId = currentUrlParams.get("id");
-    const storedId = localStorage.getItem(STORAGE_KEY);
-
-    if (!urlId) {{
-        // 【パターンA】URLにIDがない（まっさらな状態）
-        if (storedId) {{
-            // 記憶があった！ -> 復活させる
-            window.parent.location.search = "?id=" + storedId;
-        }} else {{
-            // 記憶もない（完全新規） -> 新しいIDで開始
-            const newId = "{new_generated_id}";
-            localStorage.setItem(STORAGE_KEY, newId);
-            window.parent.location.search = "?id=" + newId;
-        }}
-    }} else {{
-        // 【パターンB】URLにIDがある
-        // ローカルストレージを最新のURL IDで更新しておく（バックアップ）
-        if (urlId !== storedId) {{
-            localStorage.setItem(STORAGE_KEY, urlId);
-        }}
-    }}
-</script>
-"""
-
-# IDがURLに無い場合、JSに処理を任せてPythonはここで待機（画面を描画しない）
-if not url_id:
-    components.html(js_code, height=0, width=0)
-    st.stop()  # リダイレクト待ちのため処理を止める
-
-# IDがURLにある場合、JSを一応動かして（バックアップ保存用）、処理を続行
-components.html(js_code, height=0, width=0)
-final_id = url_id
-st.session_state.student_id = final_id
-
 # ==============================================================================
-# 3. 門番（パスワードのみ）
+# 4. SECURITY GATE（サインイン + ログイン）
 # ==============================================================================
 if not st.session_state.logged_in:
     st.title("🔒 SECURITY GATE")
     st.markdown("Authorized Access Only")
-    
-    # 先生確認用（本番では消してもOK）
-    # st.caption(f"System ID: {final_id}")
 
     correct_password = st.secrets.get("APP_PASSWORD", None)
-    
-    col1, col2 = st.columns([2, 1])
+
+    student_id_input = st.text_input(
+        "生徒ID（例：1111 → 1年1組11番）",
+        value=st.session_state.student_id or ""
+    )
+    pin_input = st.text_input("PINコード（数字4桁・友だちに教えないで）", type="password")
+
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
-        st.info("授業用AIシステムへようこそ。合言葉を入力して接続してください。")
+        st.info(
+            "授業用AIシステムへようこそ。\n"
+            "① 初めて使う人は「サインイン」\n"
+            "② 2回目以降は「ログイン」を押してください。"
+        )
     with col2:
         input_pass = st.text_input("Access Code (合言葉)", type="password")
-    
-    if st.button("CONNECT / 接続開始"):
+    with col3:
+        st.caption("※ 合言葉は先生が配布したものを入力してください。")
+
+    col_signin, col_login = st.columns(2)
+    signin_clicked = col_signin.button("🆕 初めて使う人（サインイン）")
+    login_clicked = col_login.button("🔁 2回目以降の人（ログイン）")
+
+    # 共通入力チェック
+    def basic_checks():
         if not correct_password:
             st.error("システム設定エラー: APP_PASSWORDが設定されていません。")
-        elif input_pass == correct_password:
-            st.session_state.logged_in = True
-            
-            # ログイン時にシートから回数取得（初期表示用）
-            if final_id:
-                with st.spinner("Loading Profile..."):
-                    initial_count = get_initial_usage_count(final_id)
-                    st.session_state.usage_count = initial_count
-            
-            st.success(f"Access Granted. (Today's Usage: {st.session_state.usage_count})")
-            time.sleep(1)
-            st.rerun()
-        else:
-            st.error("Access Codeが間違っています。")
+            return False
+        if input_pass != correct_password:
+            st.error("Access Code（合言葉）が間違っています。")
+            return False
+        sid = student_id_input.strip()
+        if not sid:
+            st.error("生徒IDを入力してください。（例：1111）")
+            return False
+        if validate_and_parse_id(sid) is None:
+            st.error("生徒IDの形式または範囲が正しくありません。（学年1〜3 / 組1〜3 / 番号1〜40）")
+            return False
+        return True
+
+    # --- サインイン処理（初回登録） ---
+    if signin_clicked:
+        if not basic_checks():
+            st.stop()
+
+        if not pin_input.strip():
+            st.error("PINコードを入力してください。")
+            st.stop()
+        if not validate_pin_format(pin_input):
+            st.error("PINコードは数字4桁で入力してください。")
+            st.stop()
+
+        sid = student_id_input.strip()
+        row_idx, rec, header = find_student_record(sid)
+
+        if row_idx is None:
+            st.error("この生徒IDは先生用シートに登録されていません。先生に確認してください。")
+            st.stop()
+
+        # すでにPINが設定済みかどうか
+        already_pin = str(rec.get("pin", "")).strip()
+        if already_pin:
+            st.error("この生徒IDはすでにサインイン済みです。2回目以降の人（ログイン）ボタンを押してください。")
+            st.stop()
+
+        # ここまで来たら新規サインインOK
+        update_student_pin_and_login(row_idx, pin_input.strip(), is_new=True)
+
+        st.session_state.student_id = sid
+        st.session_state.logged_in = True
+
+        with st.spinner("プロフィールを読み込み中..."):
+            st.session_state.usage_count = get_initial_usage_count(sid)
+
+        st.success(
+            f"サインイン完了: ID {sid} / 本日の利用回数: {st.session_state.usage_count}"
+        )
+        time.sleep(1)
+        st.rerun()
+
+    # --- ログイン処理（2回目以降） ---
+    if login_clicked:
+        if not basic_checks():
+            st.stop()
+
+        if not pin_input.strip():
+            st.error("PINコードを入力してください。")
+            st.stop()
+
+        sid = student_id_input.strip()
+        row_idx, rec, header = find_student_record(sid)
+
+        if row_idx is None:
+            st.error("この生徒IDはまだサインインされていません。初めて使う人（サインイン）ボタンを押してください。")
+            st.stop()
+
+        registered_pin = str(rec.get("pin", "")).strip()
+        if not registered_pin:
+            st.error("この生徒IDにはまだPINが登録されていません。先にサインインしてください。")
+            st.stop()
+
+        if pin_input.strip() != registered_pin:
+            st.error("PINコードが違います。")
+            st.stop()
+
+        # ログイン成功
+        update_last_login_only(row_idx)
+
+        st.session_state.student_id = sid
+        st.session_state.logged_in = True
+
+        with st.spinner("プロフィールを読み込み中..."):
+            st.session_state.usage_count = get_initial_usage_count(sid)
+
+        st.success(
+            f"ログイン成功: ID {sid} / 本日の利用回数: {st.session_state.usage_count}"
+        )
+        time.sleep(1)
+        st.rerun()
+
     st.stop()
 
 # ==============================================================================
-# 4. メインアプリ処理
+# 5. メインアプリ処理
 # ==============================================================================
 
-# ★修正ポイント：ログイン済みなら、毎回シートから「本日の使用回数」を取得し直す
+# ログイン済み：毎回シートから最新の「本日の使用回数」を取得
 if st.session_state.student_id:
     st.session_state.usage_count = get_initial_usage_count(st.session_state.student_id)
 
@@ -223,7 +360,7 @@ def toggle_mode():
 
 with st.sidebar:
     st.title("TERMINAL CONTROL")
-    st.markdown(f"**Device ID:** `{st.session_state.student_id}`")
+    st.markdown(f"**Student ID:** `{st.session_state.student_id}`")
     
     remaining = MAX_CHAT_LIMIT - st.session_state.usage_count
     if remaining < 0:
@@ -276,7 +413,7 @@ if wallpaper_src:
 else:
     bg_style = f"background-color: {bg_color};"
 
-# HTML/JS (Absolute positioning)
+# HTML/JS (背景パーティクル)
 html_template = """
 <!DOCTYPE html>
 <html lang="ja">
@@ -372,12 +509,17 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 5. メイン処理 (チャットUI)
+# 6. チャットUI
 # ==============================================================================
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
-status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 20.0.0 // PRTS Online"
+status_text = (
+    f"Agent ID: {st.session_state.student_id}\n"
+    f"Img: {MAX_IMAGE_LIMIT - st.session_state.image_count} | "
+    f"Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n"
+    f"Ver 20.0.0 // PRTS Online"
+)
 st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
@@ -400,7 +542,7 @@ if prompt := st.chat_input("Command..."):
         full_response = ""
         ai_response_content = ""
 
-        # ここで usage_count を使って制限判定（値は常にシート由来）
+        # 使用回数・画像回数チェック
         if is_gen_img_req and st.session_state.image_count >= MAX_IMAGE_LIMIT:
             error_msg = "⚠️ Image generation limit reached."
             message_placeholder.error(error_msg)
@@ -456,7 +598,7 @@ if prompt := st.chat_input("Command..."):
                             {"type": "text", "text": prompt},
                             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                         ]
-                        # 今回のユーザーメッセージを image 付きに差し替え
+                        # 直近の user メッセージを画像付きに差し替え
                         messages_payload.pop()
                         messages_payload.append({"role": "user", "content": user_content})
 
@@ -472,9 +614,7 @@ if prompt := st.chat_input("Command..."):
                     message_placeholder.markdown(full_response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
                     
-                    # ★ここは削除：セッション側で usage_count を増やさない
-                    # st.session_state.usage_count += 1
-                    
+                    # usage_count はシートから毎回再計算するのでここでは増やさない
                     if st.session_state.student_id:
                         save_log_to_sheet(st.session_state.student_id, prompt, full_response)
                     
