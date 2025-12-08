@@ -172,14 +172,14 @@ html_template = """
    ＃＃粒子
     <script>
         const CONFIG = {
-            particleSize: ３,
+            particleSize:3,
             particleMargin: 1,
             repulsionRadius: 80,
             repulsionForce: 3.0,
             friction: 0.12,
             returnSpeed: 0.02,
             samplingStep: 2,
-            maxDisplayRatio: 0.８
+            maxDisplayRatio:0.8
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
         const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
