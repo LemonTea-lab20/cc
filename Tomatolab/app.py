@@ -1,8 +1,7 @@
 # app.py
 import base64
-import os
-import random
 from pathlib import Path
+import random
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -12,7 +11,7 @@ from auth_gate import security_gate
 from sheets_utils import save_log_to_sheet
 
 # ==============================================================================
-# 0. 環境設定 & 定数定義
+# 0. 基本設定
 # ==============================================================================
 st.set_page_config(
     layout="wide",
@@ -25,22 +24,21 @@ ACCENT_COLOR = "#00C8FF"
 MAX_CHAT_LIMIT = 15
 MAX_IMAGE_LIMIT = 5
 
-# 画像パス（リポジトリ内 assets フォルダ前提）
+# 画像ファイル（app.py と同じフォルダに ro.png / ba.png がある前提）
 BASE_DIR = Path(__file__).parent
-PARTICLE_IMG_DARK = "ro.png"
-PARTICLE_IMG_LIGHT = "ba.png"
-WALLPAPER_IMG_DARK = "None"
-WALLPAPER_IMG_LIGHT = "None"
+PARTICLE_IMG_DARK = "ro.png"   # 粒子用画像（ダーク）
+PARTICLE_IMG_LIGHT = "ro.png"  # 粒子用画像（ライトも同じでOKならこれ）
+WALLPAPER_IMG_DARK = None      # 必要なら "ba.png" など
+WALLPAPER_IMG_LIGHT = None
 
 
 # ==============================================================================
-# 1. ログイン処理（auth_gate に丸投げ）
+# 1. ログイン処理（auth_gate に任せる）
 # ==============================================================================
-security_gate()  # ここを通過した時点で logged_in は True のはず
-
+security_gate()  # ここを抜けた時点で logged_in == True のはず
 
 # ==============================================================================
-# 2. セッション初期化（UI用）
+# 2. セッション初期化（UI 用）
 # ==============================================================================
 if "chat_count" not in st.session_state:
     st.session_state.chat_count = 0
@@ -51,10 +49,10 @@ if "messages" not in st.session_state:
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = True
 
-license_type = st.session_state.license_type
+license_type = st.session_state.license_type  # "student" or "admin"
 student_id = st.session_state.student_id
 
-# OpenAI クライアント
+# OpenAI クライアント準備
 try:
     from openai import OpenAI
 
@@ -66,23 +64,22 @@ except ImportError:
 
 
 # ==============================================================================
-# 3. 画像読み込み（GitHub / assets 対応）
+# 3. 画像読み込み（粒子用・壁紙用）
 # ==============================================================================
-import os
-import base64
-# （app.py 先頭で既に import 済みなら追加しなくてOK）
-
-def get_image_base64(path):
-    # 画像は app.py と同じ階層にある前提（ba.png, ro.png）
-    if path and os.path.exists(path):
-        with open(path, "rb") as f:
-            encoded = base64.b64encode(f.read()).decode()
-            return f"data:image/png;base64,{encoded}"
-    return ""
-    else:
-        # デバッグしたくなったらログを見る用
-        print(f"[WARN] image not found: {full_path}")
+def get_image_base64(path: str) -> str:
+    """
+    app.py と同じフォルダ、または相対パスで指定された画像を
+    base64 data URL に変換して返す。
+    """
+    if not path:
         return ""
+    full_path = BASE_DIR / path
+    if full_path.exists():
+        with open(full_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("utf-8")
+            return f"data:image/png;base64,{encoded}"
+    print(f"[WARN] image not found: {full_path}")
+    return ""
 
 
 # ==============================================================================
@@ -113,6 +110,7 @@ with st.sidebar:
         key="mode_toggle",
         on_change=toggle_mode,
     )
+
     st.divider()
     uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
     if uploaded_file:
@@ -131,7 +129,7 @@ with st.sidebar:
 # ==============================================================================
 if st.session_state.dark_mode:
     particle_src = get_image_base64(PARTICLE_IMG_DARK)
-    wallpaper_src = get_image_base64(WALLPAPER_IMG_DARK)
+    wallpaper_src = get_image_base64(WALLPAPER_IMG_DARK) if WALLPAPER_IMG_DARK else ""
     bg_color = "#000000"
     p_color_main = "#ffffff"
     p_color_sub = "#444444"
@@ -142,7 +140,7 @@ if st.session_state.dark_mode:
     css_mask_color = "#000000"
 else:
     particle_src = get_image_base64(PARTICLE_IMG_LIGHT)
-    wallpaper_src = get_image_base64(WALLPAPER_IMG_LIGHT)
+    wallpaper_src = get_image_base64(WALLPAPER_IMG_LIGHT) if WALLPAPER_IMG_LIGHT else ""
     bg_color = "#ffffff"
     p_color_main = "#000000"
     p_color_sub = "#cccccc"
@@ -173,62 +171,107 @@ html_template = """
 <body>
     <canvas id="canvas"></canvas>
     <script>
-        const CONFIG = { particleSize: 2.2, particleMargin: 1, repulsionRadius: 80, repulsionForce: 3.0, friction: 0.12, returnSpeed: 0.02, samplingStep: 2, maxDisplayRatio: 0.6 };
+        const CONFIG = {
+            particleSize: 2.2,
+            particleMargin: 1,
+            repulsionRadius: 80,
+            repulsionForce: 3.0,
+            friction: 0.12,
+            returnSpeed: 0.02,
+            samplingStep: 2,
+            maxDisplayRatio: 0.6
+        };
         let particles = [], mouse = { x: -1000, y: -1000 };
         const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
         const imageSrc = "__PARTICLE_SRC__";
         class Particle {
             constructor(x, y, colorType) {
-                this.originalX = x; this.originalY = y; this.x = x; this.y = y; this.vx = 0; this.vy = 0;
+                this.originalX = x; this.originalY = y;
+                this.x = x; this.y = y;
+                this.vx = 0; this.vy = 0;
                 this.baseColor = colorType === 'main' ? '__P_COLOR_1__' : '__P_COLOR_2__';
             }
             update() {
-                const dx = this.x - mouse.x, dy = this.y - mouse.y, dist = Math.sqrt(dx*dx + dy*dy);
+                const dx = this.x - mouse.x, dy = this.y - mouse.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
                 if (dist < CONFIG.repulsionRadius) {
-                    const angle = Math.atan2(dy, dx), force = (CONFIG.repulsionRadius - dist) / CONFIG.repulsionRadius;
+                    const angle = Math.atan2(dy, dx);
+                    const force = (CONFIG.repulsionRadius - dist) / CONFIG.repulsionRadius;
                     const rep = force * force * CONFIG.repulsionForce;
-                    this.vx += Math.cos(angle) * rep; this.vy += Math.sin(angle) * rep;
+                    this.vx += Math.cos(angle) * rep;
+                    this.vy += Math.sin(angle) * rep;
                 }
-                this.vx += (this.originalX - this.x) * CONFIG.returnSpeed; this.vy += (this.originalY - this.y) * CONFIG.returnSpeed;
-                this.vx *= (1 - CONFIG.friction); this.vy *= (1 - CONFIG.friction);
-                this.x += this.vx; this.y += this.vy;
+                this.vx += (this.originalX - this.x) * CONFIG.returnSpeed;
+                this.vy += (this.originalY - this.y) * CONFIG.returnSpeed;
+                this.vx *= (1 - CONFIG.friction);
+                this.vy *= (1 - CONFIG.friction);
+                this.x += this.vx;
+                this.y += this.vy;
             }
-            draw() { ctx.fillStyle = this.baseColor; ctx.beginPath(); ctx.arc(this.x, this.y, CONFIG.particleSize/2, 0, Math.PI*2); ctx.fill(); }
+            draw() {
+                ctx.fillStyle = this.baseColor;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, CONFIG.particleSize/2, 0, Math.PI*2);
+                ctx.fill();
+            }
         }
         function init() {
             window.addEventListener('resize', resize);
-            window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
-            window.addEventListener('touchmove', e => { mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; });
-            if (imageSrc) { const img = new Image(); img.src = imageSrc; img.onload = () => { resize(); generateParticles(img); }; }
+            window.addEventListener('mousemove', e => {
+                mouse.x = e.clientX; mouse.y = e.clientY;
+            });
+            window.addEventListener('touchmove', e => {
+                mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY;
+            });
+            if (imageSrc) {
+                const img = new Image();
+                img.src = imageSrc;
+                img.onload = () => { resize(); generateParticles(img); };
+            }
         }
-        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
         function generateParticles(img) {
-            particles = []; const temp = document.createElement('canvas'), tCtx = temp.getContext('2d');
-            const tW = window.innerWidth * CONFIG.maxDisplayRatio, tH = window.innerHeight * CONFIG.maxDisplayRatio;
+            particles = [];
+            const temp = document.createElement('canvas');
+            const tCtx = temp.getContext('2d');
+            const tW = window.innerWidth * CONFIG.maxDisplayRatio;
+            const tH = window.innerHeight * CONFIG.maxDisplayRatio;
             const scale = Math.min(tW / img.width, tH / img.height);
-            const w = Math.floor(img.width * scale), h = Math.floor(img.height * scale);
-            temp.width = w; temp.height = h; tCtx.drawImage(img, 0, 0, w, h);
+            const w = Math.floor(img.width * scale);
+            const h = Math.floor(img.height * scale);
+            temp.width = w; temp.height = h;
+            tCtx.drawImage(img, 0, 0, w, h);
             const data = tCtx.getImageData(0, 0, w, h).data;
-            const offX = (window.innerWidth - w) / 2, offY = (window.innerHeight - h) / 2;
+            const offX = (window.innerWidth - w) / 2;
+            const offY = (window.innerHeight - h) / 2;
             for (let y = 0; y < h; y += CONFIG.samplingStep) {
                 for (let x = 0; x < w; x += CONFIG.samplingStep) {
                     const i = (y * w + x) * 4;
                     if (data[i + 3] > 128) {
-                        const b = (data[i]+data[i+1]+data[i+2])/3;
-                        particles.push(new Particle(x+offX, y+offY, b > 128 ? 'main':'sub'));
+                        const b = (data[i] + data[i+1] + data[i+2]) / 3;
+                        particles.push(new Particle(x+offX, y+offY, b > 128 ? 'main' : 'sub'));
                     }
                 }
             }
             animate();
         }
-        function animate() { ctx.clearRect(0, 0, canvas.width, canvas.height); particles.forEach(p => { p.update(); p.draw(); }); requestAnimationFrame(animate); }
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animate);
+        }
         init();
     </script>
 </body>
 </html>
 """
+
 final_html = (
-    html_template.replace("__PARTICLE_SRC__", particle_src)
+    html_template
+    .replace("__PARTICLE_SRC__", particle_src)
     .replace("__BG_STYLE__", bg_style)
     .replace("__P_COLOR_1__", p_color_main)
     .replace("__P_COLOR_2__", p_color_sub)
@@ -239,15 +282,18 @@ st.markdown(
     f"""
 <style>
     iframe {{
-        position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-        z-index: 0; border: none; pointer-events: auto !important;
+        position: absolute; top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        z-index: 0; border: none;
+        pointer-events: auto !important;
     }}
     .stApp {{ background: transparent !important; }}
     header, header > div {{ background: transparent !important; }}
     button[data-testid="stSidebarCollapsedControl"] {{
         color: {css_text_color} !important;
         background-color: {css_bg_rgba} !important;
-        border-radius: 5px; margin-top: 10px; margin-left: 10px;
+        border-radius: 5px;
+        margin-top: 10px; margin-left: 10px;
     }}
     section[data-testid="stSidebar"] {{
         background-color: {css_input_bg} !important;
@@ -259,14 +305,18 @@ st.markdown(
         color: {css_text_color} !important;
     }}
     .title-mask {{
-        position: fixed; top: 0; left: 0; width: 100%; height: 120px;
-        background: {css_mask_color}; z-index: 998; pointer-events: none;
+        position: fixed; top: 0; left: 0;
+        width: 100%; height: 120px;
+        background: {css_mask_color};
+        z-index: 998; pointer-events: none;
         background: linear-gradient(to bottom, {css_mask_color} 80%, transparent);
     }}
     h1 {{
-        position: fixed !important; top: 30px; left: 60px; margin: 0 !important;
-        font-family: 'Arial', sans-serif; font-weight: 900;
-        font-size: 2.5rem !important; letter-spacing: 2px;
+        position: fixed !important;
+        top: 30px; left: 60px; margin: 0 !important;
+        font-family: 'Arial', sans-serif;
+        font-weight: 900; font-size: 2.5rem !important;
+        letter-spacing: 2px;
         color: {css_text_color} !important;
         text-shadow: 0 0 10px rgba(128,128,128,0.3);
         z-index: 1000; pointer-events: none;
@@ -274,11 +324,15 @@ st.markdown(
     div[data-testid="stBottom"] {{
         background: {css_mask_color} !important;
         border-top: none {css_border_color};
-        z-index: 998; padding-top: 20px; padding-bottom: 20px;
+        z-index: 998;
+        padding-top: 20px; padding-bottom: 20px;
     }}
-    div[data-testid="stBottom"] > div {{ background: transparent !important; }}
+    div[data-testid="stBottom"] > div {{
+        background: transparent !important;
+    }}
     div[data-testid="stChatInput"] {{
-        width: 60% !important; margin: 0 auto !important;
+        width: 60% !important;
+        margin: 0 auto !important;
         position: relative; z-index: 1000;
     }}
     .stTextInput input, .stTextInput textarea {{
@@ -300,7 +354,7 @@ st.markdown(
         backdrop-filter: blur(5px);
         width: 70%; margin: 0 auto;
         position: relative; z-index: 997;
-        pointer-events: none !important;
+        pointer-events: none !重要;
     }}
     div[data-testid="stChatMessage"] div,
     div[data-testid="stChatMessage"] p,
@@ -311,11 +365,14 @@ st.markdown(
     .katex {{ color: {css_text_color} !important; pointer-events: auto !important; }}
     .katex-display {{ pointer-events: auto !important; }}
     .prts-status {{
-        position: fixed !important; bottom: 20px; right: 30px;
+        position: fixed !important;
+        bottom: 20px; right: 30px;
         font-family: 'Courier New', monospace;
         color: {css_text_color} !important;
-        z-index: 1000; pointer-events: none;
-        text-align: right; font-size: 0.8em; opacity: 0.8;
+        z-index: 1000;
+        pointer-events: none;
+        text-align: right; font-size: 0.8em;
+        opacity: 0.8;
     }}
 </style>
 """,
@@ -356,7 +413,7 @@ if prompt := st.chat_input("Command..."):
 
     with st.chat_message("user"):
         st.markdown(prompt)
-        if "uploaded_file" in locals() and uploaded_file and not is_gen_img_req:
+        if uploaded_file and not is_gen_img_req:
             st.image(uploaded_file, caption="Visual Data", width=200)
 
     with st.chat_message("assistant"):
@@ -385,6 +442,7 @@ if prompt := st.chat_input("Command..."):
 
                 # ===== 画像生成モード =====
                 if is_gen_img_req:
+
                     def has_img_key(text: str) -> bool:
                         if not IMG_PASSWORD:
                             return False
@@ -442,16 +500,14 @@ if prompt := st.chat_input("Command..."):
                                 {"role": m["role"], "content": m["content"]}
                             )
 
-                    if "uploaded_file" in locals() and uploaded_file:
-                        base64_image = base64.b64encode(
-                            uploaded_file.read()
-                        ).decode("utf-8")
+                    if uploaded_file:
+                        b64_img = base64.b64encode(uploaded_file.read()).decode("utf-8")
                         user_content = [
                             {"type": "text", "text": prompt},
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                    "url": f"data:image/jpeg;base64,{b64_img}"
                                 },
                             },
                         ]
@@ -461,7 +517,9 @@ if prompt := st.chat_input("Command..."):
                         )
 
                     stream = client.chat.completions.create(
-                        model="gpt-4o-mini", messages=messages_payload, stream=True
+                        model="gpt-4o-mini",
+                        messages=messages_payload,
+                        stream=True,
                     )
                     for chunk in stream:
                         if chunk.choices[0].delta.content is not None:
