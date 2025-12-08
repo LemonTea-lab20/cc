@@ -27,10 +27,10 @@ MAX_IMAGE_LIMIT = 5
 
 # 画像パス（リポジトリ内 assets フォルダ前提）
 BASE_DIR = Path(__file__).parent
-PARTICLE_IMG_DARK = "assets/rhodes_dark.png"
-PARTICLE_IMG_LIGHT = "assets/rhodes_light.png"
-WALLPAPER_IMG_DARK = "assets/wall_dark.png"
-WALLPAPER_IMG_LIGHT = "assets/wall_light.png"
+PARTICLE_IMG_DARK = "ro.png"
+PARTICLE_IMG_LIGHT = "ba.png"
+WALLPAPER_IMG_DARK = "None"
+WALLPAPER_IMG_LIGHT = "None"
 
 
 # ==============================================================================
