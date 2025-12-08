@@ -2,7 +2,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 import base64
 import os
-import time
 import random
 import datetime
 import re
@@ -28,7 +27,8 @@ STUDENT_SHEET_NAME = "AI_Student_Master"  # アカウントマスタ
 # 1. シート連携機能
 # ==============================================================================
 def get_gspread_client():
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    scope = ['https://spreadsheets.google.com/feeds',
+             'https://www.googleapis.com/auth/drive']
     if "gcp_service_account" not in st.secrets:
         return None
     creds_dict = st.secrets["gcp_service_account"]
@@ -164,13 +164,9 @@ def validate_and_parse_id(raw_id: str):
     return grade, klass, number
 
 def validate_pin_format(pin: str):
-    """
-    PINの形式チェック（数字4桁）。
-    """
+    """PIN形式チェック（数字4桁）"""
     p = pin.strip()
-    if len(p) != 4 or not p.isdigit():
-        return False
-    return True
+    return len(p) == 4 and p.isdigit()
 
 # ==============================================================================
 # 3. セッション初期化
@@ -185,156 +181,94 @@ if "license_type" not in st.session_state:
     st.session_state.license_type = "student"  # "student" or "admin"
 
 # ==============================================================================
-# 4. SECURITY GATE（サインイン + ログイン + 管理者）
+# 4. SECURITY GATE（ボタン1つで 管理者 or 生徒）
 # ==============================================================================
 if not st.session_state.logged_in:
     st.title("🔒 SECURITY GATE")
     st.markdown("Authorized Access Only")
 
-    correct_password = st.secrets.get("APP_PASSWORD", None)
-    admin_password   = st.secrets.get("ADMIN_PASSWORD", None)
+    app_password   = st.secrets.get("APP_PASSWORD", None)
+    admin_password = st.secrets.get("ADMIN_PASSWORD", None)
 
     student_id_input = st.text_input(
         "生徒ID（例：1111 → 1年1組11番）",
         value=st.session_state.student_id or ""
     )
     pin_input = st.text_input("PINコード（数字4桁・友だちに教えないで）", type="password")
+    access_code = st.text_input("Access Code (合言葉)", type="password")
 
-    col1, col2, col3 = st.columns([2, 1, 1])
-    with col1:
-        st.info(
-            "授業用AIシステムへようこそ。\n"
-            "① 初めて使う人は「サインイン」\n"
-            "② 2回目以降は「ログイン」\n"
-            "③ 先生は「管理者ログイン」を押してください。"
-        )
-    with col2:
-        input_pass = st.text_input("Access Code (合言葉)", type="password")
-    with col3:
-        st.caption("※ 合言葉は先生が配布したものを入力してください。")
+    st.info(
+        "・先生（管理者）は、生徒IDとPINを空のまま、管理者用の合言葉だけで接続できます。\n"
+        "・生徒は、学年組番号ID・PIN・合言葉（共通）を入力して接続してください。"
+    )
 
-    col_signin, col_login, col_admin = st.columns(3)
-    signin_clicked = col_signin.button("🆕 初めて使う人（サインイン）")
-    login_clicked  = col_login.button("🔁 2回目以降の人（ログイン）")
-    admin_clicked  = col_admin.button("👑 管理者ログイン")
+    if st.button("CONNECT / 接続開始"):
+        # --- 管理者判定 ---
+        if admin_password and access_code == admin_password:
+            st.session_state.student_id = "ADMIN"
+            st.session_state.logged_in = True
+            st.session_state.license_type = "admin"
+            st.session_state.usage_count = 0
+            st.success("管理者としてログインしました。")
+            st.experimental_rerun()
 
-    # --- 管理者ログイン ---
-    if admin_clicked:
-        if not admin_password:
-            st.error("システム設定エラー: ADMIN_PASSWORD が設定されていません。")
-            st.stop()
-
-        if input_pass != admin_password:
-            st.error("管理者用の合言葉が違います。")
-            st.stop()
-
-        # 管理者としてログイン
-        st.session_state.student_id = "ADMIN"
-        st.session_state.logged_in = True
-        st.session_state.license_type = "admin"
-        st.session_state.usage_count = 0  # 管理者は制限なし扱い
-
-        st.success("管理者としてログインしました。")
-        time.sleep(1)
-        st.rerun()
-
-    # 生徒用共通チェック
-    def basic_checks_for_student():
-        if not correct_password:
+        # --- 生徒ログイン ---
+        # 合言葉チェック
+        if not app_password:
             st.error("システム設定エラー: APP_PASSWORD が設定されていません。")
-            return False
-        if input_pass != correct_password:
+            st.stop()
+        if access_code != app_password:
             st.error("Access Code（合言葉）が間違っています。")
-            return False
+            st.stop()
+
         sid = student_id_input.strip()
         if not sid:
             st.error("生徒IDを入力してください。（例：1111）")
-            return False
+            st.stop()
         if validate_and_parse_id(sid) is None:
             st.error("生徒IDの形式または範囲が正しくありません。（学年1〜3 / 組1〜3 / 番号1〜40）")
-            return False
-        return True
-
-    # --- サインイン処理（初回） ---
-    if signin_clicked:
-        if not basic_checks_for_student():
             st.stop()
 
-        if not pin_input.strip():
-            st.error("PINコードを入力してください。")
-            st.stop()
-        if not validate_pin_format(pin_input):
-            st.error("PINコードは数字4桁で入力してください。")
-            st.stop()
-
-        sid = student_id_input.strip()
         row_idx, rec, header = find_student_record(sid)
-
         if row_idx is None:
             st.error("この生徒IDは先生用シートに登録されていません。先生に確認してください。")
             st.stop()
 
-        already_pin = str(rec.get("pin", "")).strip()
-        if already_pin:
-            st.error("この生徒IDはすでにサインイン済みです。2回目以降の人（ログイン）ボタンを押してください。")
-            st.stop()
-
-        # 新規サインインOK
-        update_student_pin_and_login(row_idx, pin_input.strip(), is_new=True)
-
-        st.session_state.student_id = sid
-        st.session_state.logged_in = True
-        st.session_state.license_type = "student"
-
-        with st.spinner("プロフィールを読み込み中..."):
-            st.session_state.usage_count = get_initial_usage_count(sid)
-
-        st.success(
-            f"サインイン完了: ID {sid} / 本日の利用回数: {st.session_state.usage_count}"
-        )
-        time.sleep(1)
-        st.rerun()
-
-    # --- ログイン処理（2回目以降） ---
-    if login_clicked:
-        if not basic_checks_for_student():
-            st.stop()
-
-        if not pin_input.strip():
-            st.error("PINコードを入力してください。")
-            st.stop()
-
-        sid = student_id_input.strip()
-        row_idx, rec, header = find_student_record(sid)
-
-        if row_idx is None:
-            st.error("この生徒IDはまだサインインされていません。初めて使う人（サインイン）ボタンを押してください。")
-            st.stop()
-
         registered_pin = str(rec.get("pin", "")).strip()
+
+        # PIN未設定 → 初回サインイン扱い
         if not registered_pin:
-            st.error("この生徒IDにはまだPINが登録されていません。先にサインインしてください。")
-            st.stop()
+            if not pin_input.strip():
+                st.error("初回サインインです。登録したいPINコード（数字4桁）を入力してください。")
+                st.stop()
+            if not validate_pin_format(pin_input):
+                st.error("PINコードは数字4桁で入力してください。")
+                st.stop()
 
-        if pin_input.strip() != registered_pin:
-            st.error("PINコードが違います。")
-            st.stop()
-
-        # ログイン成功
-        update_last_login_only(row_idx)
-
-        st.session_state.student_id = sid
-        st.session_state.logged_in = True
-        st.session_state.license_type = "student"
-
-        with st.spinner("プロフィールを読み込み中..."):
+            update_student_pin_and_login(row_idx, pin_input.strip(), is_new=True)
+            st.session_state.student_id = sid
+            st.session_state.logged_in = True
+            st.session_state.license_type = "student"
             st.session_state.usage_count = get_initial_usage_count(sid)
+            st.success(f"サインイン完了: ID {sid} / 本日の利用回数: {st.session_state.usage_count}")
+            st.experimental_rerun()
 
-        st.success(
-            f"ログイン成功: ID {sid} / 本日の利用回数: {st.session_state.usage_count}"
-        )
-        time.sleep(1)
-        st.rerun()
+        # PIN設定済み → 通常ログイン
+        else:
+            if not pin_input.strip():
+                st.error("PINコードを入力してください。")
+                st.stop()
+            if pin_input.strip() != registered_pin:
+                st.error("PINコードが違います。")
+                st.stop()
+
+            update_last_login_only(row_idx)
+            st.session_state.student_id = sid
+            st.session_state.logged_in = True
+            st.session_state.license_type = "student"
+            st.session_state.usage_count = get_initial_usage_count(sid)
+            st.success(f"ログイン成功: ID {sid} / 本日の利用回数: {st.session_state.usage_count}")
+            st.experimental_rerun()
 
     st.stop()
 
@@ -342,18 +276,18 @@ if not st.session_state.logged_in:
 # 5. メインアプリ処理（ここから先はログイン済み）
 # ==============================================================================
 
-PARTICLE_IMG_DARK = "罗德岛.png"
-PARTICLE_IMG_LIGHT = "巴别塔.png"
+PARTICLE_IMG_DARK = "assets/ro.png"
+PARTICLE_IMG_LIGHT = "assets/ba.png"
 WALLPAPER_IMG_DARK = None
 WALLPAPER_IMG_LIGHT = None
 
 @st.cache_resource
 def get_server_image_key():
+    # 旧方式ではここでランダムキーを出していたが、
+    # 今回は IMG_PASSWORD を使うので未使用にしてもOK。
     key = f"{random.randint(0, 9999):04d}"
-    print(f"KEY: {key}") 
+    print(f"KEY: {key}")
     return key
-
-IMAGE_KEY = get_server_image_key()
 
 if "chat_count" not in st.session_state:
     st.session_state.chat_count = 0
@@ -385,13 +319,17 @@ with st.sidebar:
     remaining = MAX_CHAT_LIMIT - st.session_state.usage_count
     if remaining < 0:
         remaining = 0
-    # 管理者のときは「∞」表示でもOK
     if st.session_state.license_type == "admin":
         st.metric("Remaining Chats", "∞")
     else:
         st.metric("Remaining Chats", f"{remaining} / {MAX_CHAT_LIMIT}")
     
-    is_dark_mode = st.toggle("Dark Mode", value=st.session_state.dark_mode, key="mode_toggle", on_change=toggle_mode)
+    is_dark_mode = st.toggle(
+        "Dark Mode",
+        value=st.session_state.dark_mode,
+        key="mode_toggle",
+        on_change=toggle_mode
+    )
     st.divider()
     uploaded_file = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'])
     if uploaded_file:
@@ -402,7 +340,7 @@ with st.sidebar:
         st.session_state.logged_in = False
         st.session_state.student_id = None
         st.session_state.license_type = "student"
-        st.rerun()
+        st.experimental_rerun()
 
 def get_image_base64(path):
     if path and os.path.exists(path):
@@ -507,7 +445,13 @@ html_template = """
 </body>
 </html>
 """
-final_html = html_template.replace("__PARTICLE_SRC__", particle_src).replace("__BG_STYLE__", bg_style).replace("__P_COLOR_1__", p_color_main).replace("__P_COLOR_2__", p_color_sub)
+final_html = (
+    html_template
+    .replace("__PARTICLE_SRC__", particle_src)
+    .replace("__BG_STYLE__", bg_style)
+    .replace("__P_COLOR_1__", p_color_main)
+    .replace("__P_COLOR_2__", p_color_sub)
+)
 components.html(final_html, height=0)
 
 # CSS
@@ -528,7 +472,7 @@ st.markdown(f"""
     .block-container {{ padding-top: 140px !important; padding-bottom: 120px !important; pointer-events: none; }}
     div[data-testid="stChatMessage"] {{ background-color: {css_bg_rgba} !important; border: 1px solid {css_border_color}; border-left: 3px solid {ACCENT_COLOR} !important; border-radius: 4px; backdrop-filter: blur(5px); width: 70%; margin: 0 auto; position: relative; z-index: 997; pointer-events: none !important; }}
     div[data-testid="stChatMessage"] div, div[data-testid="stChatMessage"] p, div[data-testid="stChatMessage"] code {{ color: {css_text_color} !important; pointer-events: auto !important; }}
-    .katex {{ color: {css_text_color} !important; pointer-events: auto !重要; }}
+    .katex {{ color: {css_text_color} !important; pointer-events: auto !important; }}
     .katex-display {{ pointer-events: auto !important; }}
     .prts-status {{ position: fixed !important; bottom: 20px; right: 30px; font-family: 'Courier New', monospace; color: {css_text_color} !important; z-index: 1000; pointer-events: none; text-align: right; font-size: 0.8em; opacity: 0.8; }}
 </style>
@@ -548,7 +492,10 @@ status_text = (
     f"Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n"
     f"Ver 20.0.0 // PRTS Online"
 )
-st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
+st.markdown(
+    f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>',
+    unsafe_allow_html=True
+)
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -557,9 +504,12 @@ for msg in st.session_state.messages:
         else:
             st.markdown(msg["content"])
 
+IMG_PASSWORD = st.secrets.get("IMG_PASSWORD", None)
+
 if prompt := st.chat_input("Command..."):
     is_gen_img_req = prompt.startswith("/img ")
     st.session_state.messages.append({"role": "user", "content": prompt})
+
     with st.chat_message("user"):
         st.markdown(prompt)
         if uploaded_file and not is_gen_img_req:
@@ -576,11 +526,9 @@ if prompt := st.chat_input("Command..."):
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
         
-        elif (
-            not is_gen_img_req
-            and st.session_state.license_type != "admin"
-            and st.session_state.usage_count >= MAX_CHAT_LIMIT
-        ):
+        elif (not is_gen_img_req
+              and st.session_state.license_type != "admin"
+              and st.session_state.usage_count >= MAX_CHAT_LIMIT):
             error_msg = "⚠️ Daily chat limit reached. (本日の制限回数を超えました)"
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
@@ -588,15 +536,35 @@ if prompt := st.chat_input("Command..."):
         elif api_key and has_openai_lib:
             try:
                 client = OpenAI(api_key=api_key)
+
+                # ===== 画像生成モード =====
                 if is_gen_img_req:
-                    if f"key:{IMAGE_KEY}" in prompt or f"キー:{IMAGE_KEY}" in prompt:
-                        clean_prompt = (
-                            prompt.replace(f"key:{IMAGE_KEY}", "")
-                                  .replace(f"キー:{IMAGE_KEY}", "")
-                                  .replace("/img", "")
-                                  .strip()
+                    # IMG_PASSWORD チェック
+                    def has_img_key(text: str) -> bool:
+                        if not IMG_PASSWORD:
+                            return False
+                        key1 = f"key:{IMG_PASSWORD}"
+                        key2 = f"キー:{IMG_PASSWORD}"
+                        return (key1 in text) or (key2 in text)
+
+                    if not has_img_key(prompt):
+                        error_msg = "🔒 画像生成キーが正しくありません。"
+                        message_placeholder.error(error_msg)
+                        st.session_state.messages.append(
+                            {"role": "assistant", "content": error_msg}
                         )
-                        message_placeholder.markdown(f"Generating visual data for '{clean_prompt}'...")
+                        ai_response_content = error_msg
+                    else:
+                        # プロンプトからキー部分を削除
+                        clean = prompt
+                        if IMG_PASSWORD:
+                            clean = clean.replace(f"key:{IMG_PASSWORD}", "")
+                            clean = clean.replace(f"キー:{IMG_PASSWORD}", "")
+                        clean_prompt = clean.replace("/img", "").strip()
+
+                        message_placeholder.markdown(
+                            f"Generating visual data for '{clean_prompt}'..."
+                        )
                         response = client.images.generate(
                             model="dall-e-3",
                             prompt=f"Arknights style, anime art, {clean_prompt}",
@@ -607,16 +575,14 @@ if prompt := st.chat_input("Command..."):
                         image_url = response.data[0].url
                         message_placeholder.empty()
                         st.image(image_url, caption=f"Generated: {clean_prompt}")
-                        st.session_state.messages.append({"role": "assistant", "content": image_url, "type": "image"})
+                        st.session_state.messages.append(
+                            {"role": "assistant", "content": image_url, "type": "image"}
+                        )
                         st.session_state.image_count += 1
                         ai_response_content = f"<Image Generated: {image_url}>"
-                    else:
-                        error_msg = "🔒 Access Denied. Invalid Key."
-                        message_placeholder.error(error_msg)
-                        st.session_state.messages.append({"role": "assistant", "content": error_msg})
-                        ai_response_content = error_msg
+
+                # ===== 通常チャットモード =====
                 else:
-                    # 管理者と生徒で system プロンプトを変えたい場合はここで条件分岐してもOK
                     system_prompt = (
                         "You are PRTS, the AI of Rhodes Island. "
                         "Helpful, logical, concise. Use $...$ for math equations."
@@ -624,16 +590,27 @@ if prompt := st.chat_input("Command..."):
                     messages_payload = [{"role": "system", "content": system_prompt}]
                     for m in st.session_state.messages:
                         if m.get("type") != "image":
-                            messages_payload.append({"role": m["role"], "content": m["content"]})
+                            messages_payload.append(
+                                {"role": m["role"], "content": m["content"]}
+                            )
 
                     if uploaded_file:
-                        base64_image = base64.b64encode(uploaded_file.read()).decode('utf-8')
+                        base64_image = base64.b64encode(
+                            uploaded_file.read()
+                        ).decode('utf-8')
                         user_content = [
                             {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                },
+                            },
                         ]
                         messages_payload.pop()
-                        messages_payload.append({"role": "user", "content": user_content})
+                        messages_payload.append(
+                            {"role": "user", "content": user_content}
+                        )
 
                     stream = client.chat.completions.create(
                         model="gpt-4o-mini",
@@ -645,15 +622,19 @@ if prompt := st.chat_input("Command..."):
                             full_response += chunk.choices[0].delta.content
                             message_placeholder.markdown(full_response + "▌")
                     message_placeholder.markdown(full_response)
-                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": full_response}
+                    )
                     
-                    # 生徒ライセンスのときだけ回数カウント
+                    # 生徒ライセンスのときだけ回数カウント＆ログ保存
                     if st.session_state.license_type == "student":
                         st.session_state.usage_count += 1
-
-                    # ログは ID があるときだけ保存（管理者も残したければ条件を外す）
-                    if st.session_state.student_id and st.session_state.license_type == "student":
-                        save_log_to_sheet(st.session_state.student_id, prompt, full_response)
+                        if st.session_state.student_id:
+                            save_log_to_sheet(
+                                st.session_state.student_id,
+                                prompt,
+                                full_response
+                            )
                     
                     ai_response_content = full_response
                     
@@ -664,5 +645,7 @@ if prompt := st.chat_input("Command..."):
         else:
             dummy_response = "PRTS Offline (API Key Missing)."
             message_placeholder.markdown(dummy_response)
-            st.session_state.messages.append({"role": "assistant", "content": dummy_response})
+            st.session_state.messages.append(
+                {"role": "assistant", "content": dummy_response}
+            )
             ai_response_content = dummy_response
