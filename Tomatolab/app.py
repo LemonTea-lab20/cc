@@ -68,18 +68,17 @@ except ImportError:
 # ==============================================================================
 # 3. 画像読み込み（GitHub / assets 対応）
 # ==============================================================================
-def get_image_base64(path: str) -> str:
-    """
-    app.py と同じリポジトリ内の相対パスを想定。
-    例: 'assets/rhodes_dark.png'
-    """
-    if not path:
-        return ""
-    full_path = BASE_DIR / path
-    if full_path.exists():
-        with open(full_path, "rb") as f:
-            encoded = base64.b64encode(f.read()).decode("utf-8")
+import os
+import base64
+# （app.py 先頭で既に import 済みなら追加しなくてOK）
+
+def get_image_base64(path):
+    # 画像は app.py と同じ階層にある前提（ba.png, ro.png）
+    if path and os.path.exists(path):
+        with open(path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode()
             return f"data:image/png;base64,{encoded}"
+    return ""
     else:
         # デバッグしたくなったらログを見る用
         print(f"[WARN] image not found: {full_path}")
