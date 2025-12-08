@@ -297,17 +297,23 @@ final_html = (
 )
 components.html(final_html, height=0)
 
-st.markdown(
-    f"""
+st.markdown(f"""
 <style>
-    iframe {{
-        position: absolute; top: 0; left: 0;
-        width: 100vw; height: 100vh;
-        z-index: 0; border: none;
+    /* ★ここだけ書き換え★ */
+    iframe[data-testid="stIFrame"] {{
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 0 !important;
+        border: none !important;
         pointer-events: auto !important;
     }}
+
     .stApp {{ background: transparent !important; }}
     header, header > div {{ background: transparent !important; }}
+
     button[data-testid="stSidebarCollapsedControl"] {{
         color: {css_text_color} !important;
         background-color: {css_bg_rgba} !important;
@@ -394,9 +400,7 @@ st.markdown(
         opacity: 0.8;
     }}
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 # ==============================================================================
 # 6. チャットUI
