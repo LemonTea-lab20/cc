@@ -4,10 +4,7 @@ import base64
 import os
 import time
 import random
-import logging
 import datetime
-import uuid
-import json
 import re
 from dotenv import load_dotenv
 
@@ -24,7 +21,7 @@ load_dotenv()
 ACCENT_COLOR = "#00C8FF"
 MAX_CHAT_LIMIT = 15
 MAX_IMAGE_LIMIT = 5
-LOG_SHEET_NAME = "AI_Chat_Log"        # 利用ログ
+LOG_SHEET_NAME = "AI_Chat_Log"            # 利用ログ
 STUDENT_SHEET_NAME = "AI_Student_Master"  # アカウントマスタ
 
 # ==============================================================================
@@ -105,7 +102,7 @@ def find_student_record(student_id: str):
 def update_student_pin_and_login(row_index: int, new_pin: str, is_new: bool = False):
     """
     指定行の pin / created_at / last_login を更新
-    is_new=True のときは created_at もセット（空欄のときのみ）
+    is_new=True のときは created_at もセット
     """
     sheet = get_student_sheet()
     if not sheet:
@@ -125,7 +122,6 @@ def update_student_pin_and_login(row_index: int, new_pin: str, is_new: bool = Fa
     if is_new:
         created_col = col_idx("created_at")
         if created_col:
-            # すでに何か入っていたら上書きしない運用でもOKだが、ここでは上書きしてしまう
             sheet.update_cell(row_index, created_col, now)
 
     last_login_col = col_idx("last_login")
@@ -144,7 +140,7 @@ def update_last_login_only(row_index: int):
         sheet.update_cell(row_index, col, now)
 
 # ==============================================================================
-# 2. IDフォーマットチェック（1111形式）
+# 2. ID / PIN フォーマットチェック
 # ==============================================================================
 def validate_and_parse_id(raw_id: str):
     """
@@ -169,8 +165,7 @@ def validate_and_parse_id(raw_id: str):
 
 def validate_pin_format(pin: str):
     """
-    PINの形式チェック（例：数字4桁のみ許可）。
-    条件を変えたいときはここを書き換えればOK。
+    PINの形式チェック（数字4桁）。
     """
     p = pin.strip()
     if len(p) != 4 or not p.isdigit():
@@ -186,15 +181,18 @@ if "usage_count" not in st.session_state:
     st.session_state.usage_count = 0
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+if "license_type" not in st.session_state:
+    st.session_state.license_type = "student"  # "student" or "admin"
 
 # ==============================================================================
-# 4. SECURITY GATE（サインイン + ログイン）
+# 4. SECURITY GATE（サインイン + ログイン + 管理者）
 # ==============================================================================
 if not st.session_state.logged_in:
     st.title("🔒 SECURITY GATE")
     st.markdown("Authorized Access Only")
 
     correct_password = st.secrets.get("APP_PASSWORD", None)
+    admin_password   = st.secrets.get("ADMIN_PASSWORD", None)
 
     student_id_input = st.text_input(
         "生徒ID（例：1111 → 1年1組11番）",
@@ -207,21 +205,43 @@ if not st.session_state.logged_in:
         st.info(
             "授業用AIシステムへようこそ。\n"
             "① 初めて使う人は「サインイン」\n"
-            "② 2回目以降は「ログイン」を押してください。"
+            "② 2回目以降は「ログイン」\n"
+            "③ 先生は「管理者ログイン」を押してください。"
         )
     with col2:
         input_pass = st.text_input("Access Code (合言葉)", type="password")
     with col3:
         st.caption("※ 合言葉は先生が配布したものを入力してください。")
 
-    col_signin, col_login = st.columns(2)
+    col_signin, col_login, col_admin = st.columns(3)
     signin_clicked = col_signin.button("🆕 初めて使う人（サインイン）")
-    login_clicked = col_login.button("🔁 2回目以降の人（ログイン）")
+    login_clicked  = col_login.button("🔁 2回目以降の人（ログイン）")
+    admin_clicked  = col_admin.button("👑 管理者ログイン")
 
-    # 共通入力チェック
-    def basic_checks():
+    # --- 管理者ログイン ---
+    if admin_clicked:
+        if not admin_password:
+            st.error("システム設定エラー: ADMIN_PASSWORD が設定されていません。")
+            st.stop()
+
+        if input_pass != admin_password:
+            st.error("管理者用の合言葉が違います。")
+            st.stop()
+
+        # 管理者としてログイン
+        st.session_state.student_id = "ADMIN"
+        st.session_state.logged_in = True
+        st.session_state.license_type = "admin"
+        st.session_state.usage_count = 0  # 管理者は制限なし扱い
+
+        st.success("管理者としてログインしました。")
+        time.sleep(1)
+        st.rerun()
+
+    # 生徒用共通チェック
+    def basic_checks_for_student():
         if not correct_password:
-            st.error("システム設定エラー: APP_PASSWORDが設定されていません。")
+            st.error("システム設定エラー: APP_PASSWORD が設定されていません。")
             return False
         if input_pass != correct_password:
             st.error("Access Code（合言葉）が間違っています。")
@@ -235,9 +255,9 @@ if not st.session_state.logged_in:
             return False
         return True
 
-    # --- サインイン処理（初回登録） ---
+    # --- サインイン処理（初回） ---
     if signin_clicked:
-        if not basic_checks():
+        if not basic_checks_for_student():
             st.stop()
 
         if not pin_input.strip():
@@ -254,17 +274,17 @@ if not st.session_state.logged_in:
             st.error("この生徒IDは先生用シートに登録されていません。先生に確認してください。")
             st.stop()
 
-        # すでにPINが設定済みかどうか
         already_pin = str(rec.get("pin", "")).strip()
         if already_pin:
             st.error("この生徒IDはすでにサインイン済みです。2回目以降の人（ログイン）ボタンを押してください。")
             st.stop()
 
-        # ここまで来たら新規サインインOK
+        # 新規サインインOK
         update_student_pin_and_login(row_idx, pin_input.strip(), is_new=True)
 
         st.session_state.student_id = sid
         st.session_state.logged_in = True
+        st.session_state.license_type = "student"
 
         with st.spinner("プロフィールを読み込み中..."):
             st.session_state.usage_count = get_initial_usage_count(sid)
@@ -277,7 +297,7 @@ if not st.session_state.logged_in:
 
     # --- ログイン処理（2回目以降） ---
     if login_clicked:
-        if not basic_checks():
+        if not basic_checks_for_student():
             st.stop()
 
         if not pin_input.strip():
@@ -305,6 +325,7 @@ if not st.session_state.logged_in:
 
         st.session_state.student_id = sid
         st.session_state.logged_in = True
+        st.session_state.license_type = "student"
 
         with st.spinner("プロフィールを読み込み中..."):
             st.session_state.usage_count = get_initial_usage_count(sid)
@@ -318,12 +339,8 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==============================================================================
-# 5. メインアプリ処理
+# 5. メインアプリ処理（ここから先はログイン済み）
 # ==============================================================================
-
-# ログイン済み：毎回シートから最新の「本日の使用回数」を取得
-if st.session_state.student_id:
-    st.session_state.usage_count = get_initial_usage_count(st.session_state.student_id)
 
 PARTICLE_IMG_DARK = "罗德岛.png"
 PARTICLE_IMG_LIGHT = "巴别塔.png"
@@ -360,12 +377,19 @@ def toggle_mode():
 
 with st.sidebar:
     st.title("TERMINAL CONTROL")
-    st.markdown(f"**Student ID:** `{st.session_state.student_id}`")
+    st.markdown(f"**ID:** `{st.session_state.student_id}`")
+
+    license_label = "ADMIN" if st.session_state.license_type == "admin" else "STUDENT"
+    st.markdown(f"**License:** `{license_label}`")
     
     remaining = MAX_CHAT_LIMIT - st.session_state.usage_count
     if remaining < 0:
         remaining = 0
-    st.metric("Remaining Chats", f"{remaining} / {MAX_CHAT_LIMIT}")
+    # 管理者のときは「∞」表示でもOK
+    if st.session_state.license_type == "admin":
+        st.metric("Remaining Chats", "∞")
+    else:
+        st.metric("Remaining Chats", f"{remaining} / {MAX_CHAT_LIMIT}")
     
     is_dark_mode = st.toggle("Dark Mode", value=st.session_state.dark_mode, key="mode_toggle", on_change=toggle_mode)
     st.divider()
@@ -376,6 +400,8 @@ with st.sidebar:
     if st.button("Logout"):
         st.session_state.messages = []
         st.session_state.logged_in = False
+        st.session_state.student_id = None
+        st.session_state.license_type = "student"
         st.rerun()
 
 def get_image_base64(path):
@@ -385,7 +411,7 @@ def get_image_base64(path):
             return f"data:image/png;base64,{encoded}"
     return ""
 
-if is_dark_mode:
+if st.session_state.dark_mode:
     particle_src = get_image_base64(PARTICLE_IMG_DARK)
     wallpaper_src = get_image_base64(WALLPAPER_IMG_DARK)
     bg_color = "#000000"
@@ -413,7 +439,7 @@ if wallpaper_src:
 else:
     bg_style = f"background-color: {bg_color};"
 
-# HTML/JS (背景パーティクル)
+# 背景パーティクル HTML/JS
 html_template = """
 <!DOCTYPE html>
 <html lang="ja">
@@ -502,7 +528,7 @@ st.markdown(f"""
     .block-container {{ padding-top: 140px !important; padding-bottom: 120px !important; pointer-events: none; }}
     div[data-testid="stChatMessage"] {{ background-color: {css_bg_rgba} !important; border: 1px solid {css_border_color}; border-left: 3px solid {ACCENT_COLOR} !important; border-radius: 4px; backdrop-filter: blur(5px); width: 70%; margin: 0 auto; position: relative; z-index: 997; pointer-events: none !important; }}
     div[data-testid="stChatMessage"] div, div[data-testid="stChatMessage"] p, div[data-testid="stChatMessage"] code {{ color: {css_text_color} !important; pointer-events: auto !important; }}
-    .katex {{ color: {css_text_color} !important; pointer-events: auto !important; }}
+    .katex {{ color: {css_text_color} !important; pointer-events: auto !重要; }}
     .katex-display {{ pointer-events: auto !important; }}
     .prts-status {{ position: fixed !important; bottom: 20px; right: 30px; font-family: 'Courier New', monospace; color: {css_text_color} !important; z-index: 1000; pointer-events: none; text-align: right; font-size: 0.8em; opacity: 0.8; }}
 </style>
@@ -514,8 +540,10 @@ st.markdown(f"""
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
+license_label = "ADMIN" if st.session_state.license_type == "admin" else "STUDENT"
 status_text = (
     f"Agent ID: {st.session_state.student_id}\n"
+    f"License: {license_label}\n"
     f"Img: {MAX_IMAGE_LIMIT - st.session_state.image_count} | "
     f"Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n"
     f"Ver 20.0.0 // PRTS Online"
@@ -548,7 +576,11 @@ if prompt := st.chat_input("Command..."):
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
         
-        elif not is_gen_img_req and st.session_state.usage_count >= MAX_CHAT_LIMIT:
+        elif (
+            not is_gen_img_req
+            and st.session_state.license_type != "admin"
+            and st.session_state.usage_count >= MAX_CHAT_LIMIT
+        ):
             error_msg = "⚠️ Daily chat limit reached. (本日の制限回数を超えました)"
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
@@ -584,10 +616,12 @@ if prompt := st.chat_input("Command..."):
                         st.session_state.messages.append({"role": "assistant", "content": error_msg})
                         ai_response_content = error_msg
                 else:
-                    messages_payload = [{
-                        "role": "system",
-                        "content": "You are PRTS, the AI of Rhodes Island. Helpful, logical, concise. Use $...$ for math equations."
-                    }]
+                    # 管理者と生徒で system プロンプトを変えたい場合はここで条件分岐してもOK
+                    system_prompt = (
+                        "You are PRTS, the AI of Rhodes Island. "
+                        "Helpful, logical, concise. Use $...$ for math equations."
+                    )
+                    messages_payload = [{"role": "system", "content": system_prompt}]
                     for m in st.session_state.messages:
                         if m.get("type") != "image":
                             messages_payload.append({"role": m["role"], "content": m["content"]})
@@ -598,7 +632,6 @@ if prompt := st.chat_input("Command..."):
                             {"type": "text", "text": prompt},
                             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                         ]
-                        # 直近の user メッセージを画像付きに差し替え
                         messages_payload.pop()
                         messages_payload.append({"role": "user", "content": user_content})
 
@@ -614,8 +647,12 @@ if prompt := st.chat_input("Command..."):
                     message_placeholder.markdown(full_response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
                     
-                    # usage_count はシートから毎回再計算するのでここでは増やさない
-                    if st.session_state.student_id:
+                    # 生徒ライセンスのときだけ回数カウント
+                    if st.session_state.license_type == "student":
+                        st.session_state.usage_count += 1
+
+                    # ログは ID があるときだけ保存（管理者も残したければ条件を外す）
+                    if st.session_state.student_id and st.session_state.license_type == "student":
                         save_log_to_sheet(st.session_state.student_id, prompt, full_response)
                     
                     ai_response_content = full_response
@@ -629,6 +666,3 @@ if prompt := st.chat_input("Command..."):
             message_placeholder.markdown(dummy_response)
             st.session_state.messages.append({"role": "assistant", "content": dummy_response})
             ai_response_content = dummy_response
-
-    time.sleep(0.5)
-    st.rerun()
