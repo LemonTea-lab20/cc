@@ -7,6 +7,7 @@ import random
 import logging
 import datetime
 import uuid
+import json
 from dotenv import load_dotenv
 
 # --- Google Sheets 連携用ライブラリ ---
@@ -36,15 +37,17 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 def get_initial_usage_count(user_uuid):
-    """ログイン時に1回だけシートを見に行って回数を確認"""
+    """指定UUIDの「本日の使用回数」をシートからカウント"""
     try:
         client = get_gspread_client()
-        if not client: return 0
+        if not client:
+            return 0
         
         sheet = client.open(SHEET_NAME).sheet1
         data = sheet.get_all_values()
         
-        if len(data) < 2: return 0
+        if len(data) < 2:
+            return 0
             
         count = 0
         target_date = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -63,7 +66,8 @@ def save_log_to_sheet(user_uuid, input_text, output_text):
     """ログ保存"""
     try:
         client = get_gspread_client()
-        if not client: return
+        if not client:
+            return
         sheet = client.open(SHEET_NAME).sheet1
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sheet.append_row([now, user_uuid, input_text, output_text])
@@ -71,8 +75,9 @@ def save_log_to_sheet(user_uuid, input_text, output_text):
         print(f"Log Error: {e}")
 
 # ==============================================================================
-# 2. ID管理 (フリーズ防止・ハイブリッド版)
+# 2. ID管理 (ローカルストレージ + URL ハイブリッド方式)
 # ==============================================================================
+# セッション初期化
 if "student_id" not in st.session_state:
     st.session_state.student_id = None
 if "usage_count" not in st.session_state:
@@ -80,67 +85,62 @@ if "usage_count" not in st.session_state:
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-# URLからIDを取得
+# URLからIDを取得（常に文字列 or None になるようにする）★修正ポイント
 try:
     query_params = st.query_params
-    url_id = query_params.get("id", None)
-except:
+except Exception:
     query_params = st.experimental_get_query_params()
-    url_id = query_params.get("id", [None])[0]
 
-# --- JavaScriptによるID復元・維持ロジック ---
-# Python側で一時IDを作っておく（新規ユーザー用）
-temp_new_id = str(uuid.uuid4())[:8]
-
-if url_id:
-    # A. URLにIDがある場合（通常）
-    final_id = url_id
-    
-    # ローカルストレージにバックアップ保存するJS
-    # ※画面には何も描画しない
-    js_code = f"""
-    <script>
-        try {{
-            localStorage.setItem("tomato_lab_id", "{final_id}");
-        }} catch(e) {{}}
-    </script>
-    """
-    components.html(js_code, height=0, width=0)
-
+raw_id = query_params.get("id")
+url_id = None
+if isinstance(raw_id, list):
+    url_id = raw_id[0] if raw_id else None
 else:
-    # B. URLにIDがない場合（新規 or タブ閉じ再開）
-    # ★ここで st.stop() をしないのが修正ポイント！
-    # 一旦「新しいID」で仮決定して画面を表示しつつ、裏で復元を試みる
-    
-    final_id = temp_new_id
-    
-    js_code = f"""
-    <script>
-        const STORAGE_KEY = "tomato_lab_id";
-        const tempId = "{temp_new_id}";
-        
-        try {{
-            const storedId = localStorage.getItem(STORAGE_KEY);
-            
-            if (storedId && storedId !== "null" && storedId !== "undefined") {{
-                // 1. 過去のIDが見つかった！ -> そのIDでリロード（復元）
-                // ※ここで画面が一瞬リロードされます
-                window.parent.location.search = "?id=" + storedId;
-            }} else {{
-                // 2. 過去のIDなし（完全新規） -> 一時IDを保存してURLを書き換え
-                localStorage.setItem(STORAGE_KEY, tempId);
-                // リロードせずにURLだけそっと書き換える
-                const newUrl = window.parent.location.pathname + "?id=" + tempId;
-                window.parent.history.replaceState(null, "", newUrl);
-            }}
-        }} catch(e) {{
-            console.log("Storage access failed");
-        }}
-    </script>
-    """
-    components.html(js_code, height=0, width=0)
+    url_id = raw_id
 
-# IDを確定
+# --- ここが新機能：JavaScriptでローカルストレージを操作 ---
+# Python側で新しいIDを生成しておく（JS側で使うため）
+new_generated_id = str(uuid.uuid4())[:8]
+
+# JavaScriptコード
+# 1. URLにIDがない場合 -> ローカルストレージを探す -> あればリダイレクト、なければ新規発行してリダイレクト
+# 2. URLにIDがある場合 -> ローカルストレージにそのIDを保存（同期）
+js_code = f"""
+<script>
+    const STORAGE_KEY = "tomato_lab_student_id";
+    const currentUrlParams = new URLSearchParams(window.location.search);
+    const urlId = currentUrlParams.get("id");
+    const storedId = localStorage.getItem(STORAGE_KEY);
+
+    if (!urlId) {{
+        // 【パターンA】URLにIDがない（まっさらな状態）
+        if (storedId) {{
+            // 記憶があった！ -> 復活させる
+            window.parent.location.search = "?id=" + storedId;
+        }} else {{
+            // 記憶もない（完全新規） -> 新しいIDで開始
+            const newId = "{new_generated_id}";
+            localStorage.setItem(STORAGE_KEY, newId);
+            window.parent.location.search = "?id=" + newId;
+        }}
+    }} else {{
+        // 【パターンB】URLにIDがある
+        // ローカルストレージを最新のURL IDで更新しておく（バックアップ）
+        if (urlId !== storedId) {{
+            localStorage.setItem(STORAGE_KEY, urlId);
+        }}
+    }}
+</script>
+"""
+
+# IDがURLに無い場合、JSに処理を任せてPythonはここで待機（画面を描画しない）
+if not url_id:
+    components.html(js_code, height=0, width=0)
+    st.stop()  # リダイレクト待ちのため処理を止める
+
+# IDがURLにある場合、JSを一応動かして（バックアップ保存用）、処理を続行
+components.html(js_code, height=0, width=0)
+final_id = url_id
 st.session_state.student_id = final_id
 
 # ==============================================================================
@@ -150,9 +150,8 @@ if not st.session_state.logged_in:
     st.title("🔒 SECURITY GATE")
     st.markdown("Authorized Access Only")
     
-    # 復元チェック中はIDが変わる可能性があるので、ID表示はログイン後でも良いが
-    # 確認用に小さく表示しておく
-    # st.caption(f"Device ID: {final_id}") 
+    # 先生確認用（本番では消してもOK）
+    # st.caption(f"System ID: {final_id}")
 
     correct_password = st.secrets.get("APP_PASSWORD", None)
     
@@ -164,11 +163,11 @@ if not st.session_state.logged_in:
     
     if st.button("CONNECT / 接続開始"):
         if not correct_password:
-             st.error("システム設定エラー: APP_PASSWORDが設定されていません。")
+            st.error("システム設定エラー: APP_PASSWORDが設定されていません。")
         elif input_pass == correct_password:
             st.session_state.logged_in = True
             
-            # ログイン時にシートから回数取得
+            # ログイン時にシートから回数取得（初期表示用）
             if final_id:
                 with st.spinner("Loading Profile..."):
                     initial_count = get_initial_usage_count(final_id)
@@ -179,13 +178,16 @@ if not st.session_state.logged_in:
             st.rerun()
         else:
             st.error("Access Codeが間違っています。")
-    
-    # ここで止める（ログイン画面より下を見せないため）
     st.stop()
 
 # ==============================================================================
 # 4. メインアプリ処理
 # ==============================================================================
+
+# ★修正ポイント：ログイン済みなら、毎回シートから「本日の使用回数」を取得し直す
+if st.session_state.student_id:
+    st.session_state.usage_count = get_initial_usage_count(st.session_state.student_id)
+
 PARTICLE_IMG_DARK = "罗德岛.png"
 PARTICLE_IMG_LIGHT = "巴别塔.png"
 WALLPAPER_IMG_DARK = None
@@ -199,10 +201,14 @@ def get_server_image_key():
 
 IMAGE_KEY = get_server_image_key()
 
-if "chat_count" not in st.session_state: st.session_state.chat_count = 0
-if "image_count" not in st.session_state: st.session_state.image_count = 0
-if "messages" not in st.session_state: st.session_state.messages = []
-if "dark_mode" not in st.session_state: st.session_state.dark_mode = True
+if "chat_count" not in st.session_state:
+    st.session_state.chat_count = 0
+if "image_count" not in st.session_state:
+    st.session_state.image_count = 0
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = True
 
 try:
     from openai import OpenAI
@@ -220,7 +226,8 @@ with st.sidebar:
     st.markdown(f"**Device ID:** `{st.session_state.student_id}`")
     
     remaining = MAX_CHAT_LIMIT - st.session_state.usage_count
-    if remaining < 0: remaining = 0
+    if remaining < 0:
+        remaining = 0
     st.metric("Remaining Chats", f"{remaining} / {MAX_CHAT_LIMIT}")
     
     is_dark_mode = st.toggle("Dark Mode", value=st.session_state.dark_mode, key="mode_toggle", on_change=toggle_mode)
@@ -269,6 +276,7 @@ if wallpaper_src:
 else:
     bg_style = f"background-color: {bg_color};"
 
+# HTML/JS (Absolute positioning)
 html_template = """
 <!DOCTYPE html>
 <html lang="ja">
@@ -369,26 +377,30 @@ st.markdown(f"""
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
-status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 20.1.0 // PRTS Online"
+status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 20.0.0 // PRTS Online"
 st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        if msg.get("type") == "image": st.image(msg["content"])
-        else: st.markdown(msg["content"])
+        if msg.get("type") == "image":
+            st.image(msg["content"])
+        else:
+            st.markdown(msg["content"])
 
 if prompt := st.chat_input("Command..."):
     is_gen_img_req = prompt.startswith("/img ")
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
-        if uploaded_file and not is_gen_img_req: st.image(uploaded_file, caption="Visual Data", width=200)
+        if uploaded_file and not is_gen_img_req:
+            st.image(uploaded_file, caption="Visual Data", width=200)
     
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
         ai_response_content = ""
 
+        # ここで usage_count を使って制限判定（値は常にシート由来）
         if is_gen_img_req and st.session_state.image_count >= MAX_IMAGE_LIMIT:
             error_msg = "⚠️ Image generation limit reached."
             message_placeholder.error(error_msg)
@@ -404,9 +416,20 @@ if prompt := st.chat_input("Command..."):
                 client = OpenAI(api_key=api_key)
                 if is_gen_img_req:
                     if f"key:{IMAGE_KEY}" in prompt or f"キー:{IMAGE_KEY}" in prompt:
-                        clean_prompt = prompt.replace(f"key:{IMAGE_KEY}", "").replace(f"キー:{IMAGE_KEY}", "").replace("/img", "").strip()
+                        clean_prompt = (
+                            prompt.replace(f"key:{IMAGE_KEY}", "")
+                                  .replace(f"キー:{IMAGE_KEY}", "")
+                                  .replace("/img", "")
+                                  .strip()
+                        )
                         message_placeholder.markdown(f"Generating visual data for '{clean_prompt}'...")
-                        response = client.images.generate(model="dall-e-3", prompt=f"Arknights style, anime art, {clean_prompt}", size="1024x1024", quality="standard", n=1)
+                        response = client.images.generate(
+                            model="dall-e-3",
+                            prompt=f"Arknights style, anime art, {clean_prompt}",
+                            size="1024x1024",
+                            quality="standard",
+                            n=1
+                        )
                         image_url = response.data[0].url
                         message_placeholder.empty()
                         st.image(image_url, caption=f"Generated: {clean_prompt}")
@@ -419,15 +442,29 @@ if prompt := st.chat_input("Command..."):
                         st.session_state.messages.append({"role": "assistant", "content": error_msg})
                         ai_response_content = error_msg
                 else:
-                    messages_payload = [{"role": "system", "content": "You are PRTS, the AI of Rhodes Island. Helpful, logical, concise. Use $...$ for math equations."}]
+                    messages_payload = [{
+                        "role": "system",
+                        "content": "You are PRTS, the AI of Rhodes Island. Helpful, logical, concise. Use $...$ for math equations."
+                    }]
                     for m in st.session_state.messages:
-                        if m.get("type") != "image": messages_payload.append({"role": m["role"], "content": m["content"]})
+                        if m.get("type") != "image":
+                            messages_payload.append({"role": m["role"], "content": m["content"]})
+
                     if uploaded_file:
                         base64_image = base64.b64encode(uploaded_file.read()).decode('utf-8')
-                        user_content = [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}]
-                        messages_payload.pop() 
+                        user_content = [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]
+                        # 今回のユーザーメッセージを image 付きに差し替え
+                        messages_payload.pop()
                         messages_payload.append({"role": "user", "content": user_content})
-                    stream = client.chat.completions.create(model="gpt-4o-mini", messages=messages_payload, stream=True)
+
+                    stream = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=messages_payload,
+                        stream=True
+                    )
                     for chunk in stream:
                         if chunk.choices[0].delta.content is not None:
                             full_response += chunk.choices[0].delta.content
@@ -435,7 +472,8 @@ if prompt := st.chat_input("Command..."):
                     message_placeholder.markdown(full_response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
                     
-                    st.session_state.usage_count += 1
+                    # ★ここは削除：セッション側で usage_count を増やさない
+                    # st.session_state.usage_count += 1
                     
                     if st.session_state.student_id:
                         save_log_to_sheet(st.session_state.student_id, prompt, full_response)
