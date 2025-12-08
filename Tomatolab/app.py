@@ -172,13 +172,13 @@ html_template = """
    ＃＃粒子
     <script>
         const CONFIG = {
-            particleSize:4,
-            particleMargin: 1,
+            particleSize: 4,
+            particleMargin: 1.5,
             repulsionRadius: 80,
             repulsionForce: 3.0,
             friction: 0.12,
             returnSpeed: 0.02,
-            samplingStep: 2,
+            samplingStep: 3,
             maxDisplayRatio:0.65
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
