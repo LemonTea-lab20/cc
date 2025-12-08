@@ -1,31 +1,11 @@
 import base64
 from pathlib import Path
-
 import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
-
 from auth_gate import security_gate
 from sheets_utils import save_log_to_sheet
-
 import os, base64
-
-BASE_DIR = Path(__file__).parent
-
-st.write("CWD:", os.getcwd())
-st.write("BASE_DIR:", BASE_DIR)
-
-# ro.png が存在するか？
-st.write("ro.png exists? ->", (BASE_DIR / "ro.png").exists())
-st.write("ba.png exists? ->", (BASE_DIR / "ba.png").exists())
-
-# 読めたら長さだけ表示
-if (BASE_DIR / "ro.png").exists():
-    with open(BASE_DIR / "ro.png", "rb") as f:
-        data = base64.b64encode(f.read()).decode("utf-8")
-    st.write("particle_src length:", len(data))
-else:
-    st.write("particle_src length: 0 (file not found)")
 
 # ==============================================================================
 # 0. 基本設定
