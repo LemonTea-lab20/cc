@@ -7,6 +7,7 @@ import random
 import logging
 import datetime
 import uuid
+import json
 from dotenv import load_dotenv
 
 # --- Google Sheets 連携用ライブラリ ---
@@ -51,6 +52,7 @@ def get_initial_usage_count(user_uuid):
         
         for row in data:
             if len(row) > 1:
+                # 日付とUUIDの一致を確認
                 if target_date in row[0] and str(user_uuid) == str(row[1]): 
                     count += 1
         return count
@@ -70,7 +72,7 @@ def save_log_to_sheet(user_uuid, input_text, output_text):
         print(f"Log Error: {e}")
 
 # ==============================================================================
-# 2. ID管理 (URL埋め込み方式・安定版)
+# 2. ID管理 (ローカルストレージ + URL ハイブリッド方式)
 # ==============================================================================
 # セッション初期化
 if "student_id" not in st.session_state:
@@ -80,28 +82,57 @@ if "usage_count" not in st.session_state:
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-# --- URLからIDを取得 ---
+# URLからIDを取得
 try:
-    # 新しいStreamlitの書き方
     query_params = st.query_params
     url_id = query_params.get("id", None)
 except:
-    # 古いバージョンの書き方
     query_params = st.experimental_get_query_params()
     url_id = query_params.get("id", [None])[0]
 
-# ID決定ロジック
-if url_id:
-    # URLにIDがあればそれを使う（100%確実）
-    final_id = url_id
-else:
-    # URLにIDがないなら、新規発行してURLに書き込む
-    final_id = str(uuid.uuid4())[:8]
-    try:
-        st.query_params["id"] = final_id
-    except:
-        st.experimental_set_query_params(id=final_id)
+# --- ここが新機能：JavaScriptでローカルストレージを操作 ---
+# Python側で新しいIDを生成しておく（JS側で使うため）
+new_generated_id = str(uuid.uuid4())[:8]
 
+# JavaScriptコード
+# 1. URLにIDがない場合 -> ローカルストレージを探す -> あればリダイレクト、なければ新規発行してリダイレクト
+# 2. URLにIDがある場合 -> ローカルストレージにそのIDを保存（同期）
+js_code = f"""
+<script>
+    const STORAGE_KEY = "tomato_lab_student_id";
+    const currentUrlParams = new URLSearchParams(window.location.search);
+    const urlId = currentUrlParams.get("id");
+    const storedId = localStorage.getItem(STORAGE_KEY);
+
+    if (!urlId) {{
+        // 【パターンA】URLにIDがない（まっさらな状態）
+        if (storedId) {{
+            // 記憶があった！ -> 復活させる
+            window.parent.location.search = "?id=" + storedId;
+        }} else {{
+            // 記憶もない（完全新規） -> 新しいIDで開始
+            const newId = "{new_generated_id}";
+            localStorage.setItem(STORAGE_KEY, newId);
+            window.parent.location.search = "?id=" + newId;
+        }}
+    }} else {{
+        // 【パターンB】URLにIDがある
+        // ローカルストレージを最新のURL IDで更新しておく（バックアップ）
+        if (urlId !== storedId) {{
+            localStorage.setItem(STORAGE_KEY, urlId);
+        }}
+    }}
+</script>
+"""
+
+# IDがURLに無い場合、JSに処理を任せてPythonはここで待機（画面を描画しない）
+if not url_id:
+    components.html(js_code, height=0, width=0)
+    st.stop() # リダイレクト待ちのため処理を止める
+
+# IDがURLにある場合、JSを一応動かして（バックアップ保存用）、処理を続行
+components.html(js_code, height=0, width=0)
+final_id = url_id
 st.session_state.student_id = final_id
 
 # ==============================================================================
@@ -111,6 +142,9 @@ if not st.session_state.logged_in:
     st.title("🔒 SECURITY GATE")
     st.markdown("Authorized Access Only")
     
+    # 先生確認用（本番では消してもOK）
+    # st.caption(f"System ID: {final_id}")
+
     correct_password = st.secrets.get("APP_PASSWORD", None)
     
     col1, col2 = st.columns([2, 1])
@@ -123,10 +157,9 @@ if not st.session_state.logged_in:
         if not correct_password:
              st.error("システム設定エラー: APP_PASSWORDが設定されていません。")
         elif input_pass == correct_password:
-            # ログイン成功
             st.session_state.logged_in = True
             
-            # シートから回数取得
+            # ログイン時にシートから回数取得
             if final_id:
                 with st.spinner("Loading Profile..."):
                     initial_count = get_initial_usage_count(final_id)
@@ -225,6 +258,7 @@ if wallpaper_src:
 else:
     bg_style = f"background-color: {bg_color};"
 
+# HTML/JS (Absolute positioning)
 html_template = """
 <!DOCTYPE html>
 <html lang="ja">
@@ -298,7 +332,7 @@ components.html(final_html, height=0)
 # CSS
 st.markdown(f"""
 <style>
-    iframe {{ position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; border: none; pointer-events: auto !important; }}
+    iframe {{ position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; border: none; pointer-events: auto !important; }}
     .stApp {{ background: transparent !important; }}
     header, header > div {{ background: transparent !important; }}
     button[data-testid="stSidebarCollapsedControl"] {{ color: {css_text_color} !important; background-color: {css_bg_rgba} !important; border-radius: 5px; margin-top: 10px; margin-left: 10px; }}
@@ -325,7 +359,7 @@ st.markdown(f"""
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
-status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 19.0.0 // PRTS Online"
+status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 20.0.0 // PRTS Online"
 st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
