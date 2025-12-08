@@ -7,7 +7,6 @@ import random
 import logging
 import datetime
 import uuid
-import json
 from dotenv import load_dotenv
 
 # --- Google Sheets 連携用ライブラリ ---
@@ -72,9 +71,8 @@ def save_log_to_sheet(user_uuid, input_text, output_text):
         print(f"Log Error: {e}")
 
 # ==============================================================================
-# 2. ID管理 (ローカルストレージ + URL ハイブリッド方式)
+# 2. ID管理 (フリーズ防止・ハイブリッド版)
 # ==============================================================================
-# セッション初期化
 if "student_id" not in st.session_state:
     st.session_state.student_id = None
 if "usage_count" not in st.session_state:
@@ -90,49 +88,59 @@ except:
     query_params = st.experimental_get_query_params()
     url_id = query_params.get("id", [None])[0]
 
-# --- ここが新機能：JavaScriptでローカルストレージを操作 ---
-# Python側で新しいIDを生成しておく（JS側で使うため）
-new_generated_id = str(uuid.uuid4())[:8]
+# --- JavaScriptによるID復元・維持ロジック ---
+# Python側で一時IDを作っておく（新規ユーザー用）
+temp_new_id = str(uuid.uuid4())[:8]
 
-# JavaScriptコード
-# 1. URLにIDがない場合 -> ローカルストレージを探す -> あればリダイレクト、なければ新規発行してリダイレクト
-# 2. URLにIDがある場合 -> ローカルストレージにそのIDを保存（同期）
-js_code = f"""
-<script>
-    const STORAGE_KEY = "tomato_lab_student_id";
-    const currentUrlParams = new URLSearchParams(window.location.search);
-    const urlId = currentUrlParams.get("id");
-    const storedId = localStorage.getItem(STORAGE_KEY);
-
-    if (!urlId) {{
-        // 【パターンA】URLにIDがない（まっさらな状態）
-        if (storedId) {{
-            // 記憶があった！ -> 復活させる
-            window.parent.location.search = "?id=" + storedId;
-        }} else {{
-            // 記憶もない（完全新規） -> 新しいIDで開始
-            const newId = "{new_generated_id}";
-            localStorage.setItem(STORAGE_KEY, newId);
-            window.parent.location.search = "?id=" + newId;
-        }}
-    }} else {{
-        // 【パターンB】URLにIDがある
-        // ローカルストレージを最新のURL IDで更新しておく（バックアップ）
-        if (urlId !== storedId) {{
-            localStorage.setItem(STORAGE_KEY, urlId);
-        }}
-    }}
-</script>
-"""
-
-# IDがURLに無い場合、JSに処理を任せてPythonはここで待機（画面を描画しない）
-if not url_id:
+if url_id:
+    # A. URLにIDがある場合（通常）
+    final_id = url_id
+    
+    # ローカルストレージにバックアップ保存するJS
+    # ※画面には何も描画しない
+    js_code = f"""
+    <script>
+        try {{
+            localStorage.setItem("tomato_lab_id", "{final_id}");
+        }} catch(e) {{}}
+    </script>
+    """
     components.html(js_code, height=0, width=0)
-    st.stop() # リダイレクト待ちのため処理を止める
 
-# IDがURLにある場合、JSを一応動かして（バックアップ保存用）、処理を続行
-components.html(js_code, height=0, width=0)
-final_id = url_id
+else:
+    # B. URLにIDがない場合（新規 or タブ閉じ再開）
+    # ★ここで st.stop() をしないのが修正ポイント！
+    # 一旦「新しいID」で仮決定して画面を表示しつつ、裏で復元を試みる
+    
+    final_id = temp_new_id
+    
+    js_code = f"""
+    <script>
+        const STORAGE_KEY = "tomato_lab_id";
+        const tempId = "{temp_new_id}";
+        
+        try {{
+            const storedId = localStorage.getItem(STORAGE_KEY);
+            
+            if (storedId && storedId !== "null" && storedId !== "undefined") {{
+                // 1. 過去のIDが見つかった！ -> そのIDでリロード（復元）
+                // ※ここで画面が一瞬リロードされます
+                window.parent.location.search = "?id=" + storedId;
+            }} else {{
+                // 2. 過去のIDなし（完全新規） -> 一時IDを保存してURLを書き換え
+                localStorage.setItem(STORAGE_KEY, tempId);
+                // リロードせずにURLだけそっと書き換える
+                const newUrl = window.parent.location.pathname + "?id=" + tempId;
+                window.parent.history.replaceState(null, "", newUrl);
+            }}
+        }} catch(e) {{
+            console.log("Storage access failed");
+        }}
+    </script>
+    """
+    components.html(js_code, height=0, width=0)
+
+# IDを確定
 st.session_state.student_id = final_id
 
 # ==============================================================================
@@ -142,8 +150,9 @@ if not st.session_state.logged_in:
     st.title("🔒 SECURITY GATE")
     st.markdown("Authorized Access Only")
     
-    # 先生確認用（本番では消してもOK）
-    # st.caption(f"System ID: {final_id}")
+    # 復元チェック中はIDが変わる可能性があるので、ID表示はログイン後でも良いが
+    # 確認用に小さく表示しておく
+    # st.caption(f"Device ID: {final_id}") 
 
     correct_password = st.secrets.get("APP_PASSWORD", None)
     
@@ -170,6 +179,8 @@ if not st.session_state.logged_in:
             st.rerun()
         else:
             st.error("Access Codeが間違っています。")
+    
+    # ここで止める（ログイン画面より下を見せないため）
     st.stop()
 
 # ==============================================================================
@@ -258,7 +269,6 @@ if wallpaper_src:
 else:
     bg_style = f"background-color: {bg_color};"
 
-# HTML/JS (Absolute positioning)
 html_template = """
 <!DOCTYPE html>
 <html lang="ja">
@@ -359,7 +369,7 @@ st.markdown(f"""
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
 st.title("TOMATO LAB NETWORK ")
 
-status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 20.0.0 // PRTS Online"
+status_text = f"Agent ID: {st.session_state.student_id}\nImg: {MAX_IMAGE_LIMIT - st.session_state.image_count} | Chat: {MAX_CHAT_LIMIT - st.session_state.usage_count}\n Ver 20.1.0 // PRTS Online"
 st.markdown(f'<div class="prts-status" style="white-space: pre-line;">{status_text}</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
