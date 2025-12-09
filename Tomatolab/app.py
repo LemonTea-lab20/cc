@@ -438,110 +438,140 @@ if prompt := st.chat_input("Command..."):
             ai_response_content = error_msg
 
         # ② OpenAI が使えるとき
-        elif api_key and has_openai_lib:
-            try:
-                client = OpenAI(api_key=api_key)
+      elif api_key and has_openai_lib:
+    try:
+        client = OpenAI(api_key=api_key)
 
-                # ===== 画像生成モード =====
-                if is_gen_img_req:
+        # ===== 画像生成モード =====
+        if is_gen_img_req:
 
-                    def has_img_key(text: str) -> bool:
-                        if not IMG_PASSWORD:
-                            return False
-                        key1 = f"key:{IMG_PASSWORD}"
-                        key2 = f"キー:{IMG_PASSWORD}"
-                        return (key1 in text) or (key2 in text)
+            def has_img_key(text: str) -> bool:
+                if not IMG_PASSWORD:
+                    return False
+                key1 = f"key:{IMG_PASSWORD}"
+                key2 = f"キー:{IMG_PASSWORD}"
+                return (key1 in text) or (key2 in text)
 
-                    if not has_img_key(prompt):
-                        error_msg = "🔒 画像生成キーが正しくありません。"
-                        message_placeholder.error(error_msg)
-                        st.session_state.messages.append(
-                            {"role": "assistant", "content": error_msg}
-                        )
-                        ai_response_content = error_msg
+            if not has_img_key(prompt):
+                error_msg = "🔒 画像生成キーが正しくありません。"
+                message_placeholder.error(error_msg)
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": error_msg}
+                )
+                ai_response_content = error_msg
 
-                    else:
-                        clean = prompt
-                        if IMG_PASSWORD:
-                            clean = clean.replace(f"key:{IMG_PASSWORD}", "")
-                            clean = clean.replace(f"キー:{IMG_PASSWORD}", "")
-                        clean_prompt = clean.replace("/img", "").strip()
+            else:
+                clean = prompt
+                if IMG_PASSWORD:
+                    clean = clean.replace(f"key:{IMG_PASSWORD}", "")
+                    clean = clean.replace(f"キー:{IMG_PASSWORD}", "")
+                clean_prompt = clean.replace("/img", "").strip()
 
-                        message_placeholder.markdown(
-                            f"Generating visual data for '{clean_prompt}'..."
-                        )
-                        response = client.images.generate(
-                            model="dall-e-3",
-                            prompt=f"Arknights style, anime art, {clean_prompt}",
-                            size="1024x1024",
-                            quality="standard",
-                            n=1,
-                        )
-                        image_url = response.data[0].url
-                        message_placeholder.empty()
-                        st.image(image_url, caption=f"Generated: {clean_prompt}")
-                        st.session_state.messages.append(
-                            {
-                                "role": "assistant",
-                                "content": image_url,
-                                "type": "image",
-                            }
-                        )
-                        st.session_state.image_count += 1
-                        ai_response_content = f"<Image Generated: {image_url}>"
+                message_placeholder.markdown(
+                    f"Generating visual data for '{clean_prompt}'..."
+                )
 
-                               # ===== 画像生成モード =====
-                if is_gen_img_req:
+                # ★ ここが b64 版の画像生成処理 ★
+                response = client.images.generate(
+                    model="gpt-image-1",  # 画像モデル
+                    prompt=f"Arknights style, anime art, {clean_prompt}",
+                    size="1024x1024",
+                    n=1,
+                    response_format="b64_json",  # base64 で受け取る
+                )
 
-                    def has_img_key(text: str) -> bool:
-                        if not IMG_PASSWORD:
-                            return False
-                        key1 = f"key:{IMG_PASSWORD}"
-                        key2 = f"キー:{IMG_PASSWORD}"
-                        return (key1 in text) or (key2 in text)
+                # base64 → バイナリに変換して表示
+                image_b64 = response.data[0].b64_json
+                image_bytes = base64.b64decode(image_b64)
 
-                    if not has_img_key(prompt):
-                        error_msg = "🔒 画像生成キーが正しくありません。"
-                        message_placeholder.error(error_msg)
-                        st.session_state.messages.append(
-                            {"role": "assistant", "content": error_msg}
-                        )
-                        ai_response_content = error_msg
+                message_placeholder.empty()
+                st.image(image_bytes, caption=f"Generated: {clean_prompt}")
 
-                    else:
-                        clean = prompt
-                        if IMG_PASSWORD:
-                            clean = clean.replace(f"key:{IMG_PASSWORD}", "")
-                            clean = clean.replace(f"キー:{IMG_PASSWORD}", "")
-                        clean_prompt = clean.replace("/img", "").strip()
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": "<Image Generated>",
+                        "type": "image",
+                    }
+                )
+                st.session_state.image_count += 1
+                ai_response_content = "<Image Generated>"
 
-                        message_placeholder.markdown(
-                            f"Generating visual data for '{clean_prompt}'..."
-                        )
+        # ===== 通常チャットモード =====
+        else:
+            # 管理者(先生)モード / 生徒モードでプロンプトを分岐
+            if license_type == "admin":
+                system_prompt = """
+あなたは中学校教員のための授業設計・教材作成支援AI「Mr.トマト（先生モード）」です。
 
-                        # ★ ここから b64_json 版に変更 ★
-                        response = client.images.generate(
-                            model="gpt-image-1",  # 画像モデル
-                            prompt=f"Arknights style, anime art, {clean_prompt}",
-                            size="1024x1024",
-                            n=1,
-                            response_format="b64_json",  # ← b64 で受け取る
-                        )
+- 相手は中学校の先生が想定される。専門的な用語を使ってよいが、必要に応じて簡単な説明もそえる。
+- 授業アイデア・ワークシート・評価規準・コメント文など、教員向けのアウトプットを丁寧に提案する。
+- 生徒情報や個人情報に関わる内容は、具体名を出さずに一般化した形でアドバイスする。
+- 文章のトーンは「落ち着いた大人向け」で、敬体（です・ます）を基本とする。
+- Helpful, logical, concise. Use $...$ for math equations.
+"""
+            else:
+                system_prompt = """
+あなたは中学校の授業で使う学習支援AI「Mr.トマト」です。
 
-                        # base64 データを取り出してデコード
-                        image_b64 = response.data[0].b64_json
-                        image_bytes = base64.b64decode(image_b64)
+- 口調は丁寧だがフランクで、中学生にもわかりやすい表現を使う。
+- 回答は基本的に日本語で行う（ユーザーが英語で質問したときは英語も可）。
+- 宿題やテスト問題は、答えだけではなく「考え方のステップ」を重視して説明する。
+- 暴力・差別・個人情報など、不適切な内容には丁寧にお断りし、安全な話題や学びに誘導する。
+- Helpful, logical, concise. Use $...$ for math equations.
+"""
 
-                        message_placeholder.empty()
-                        st.image(image_bytes, caption=f"Generated: {clean_prompt}")
+            # メッセージペイロードを構築
+            messages_payload = [{"role": "system", "content": system_prompt}]
+            for m in st.session_state.messages:
+                if m.get("type") != "image":
+                    messages_payload.append(
+                        {"role": m["role"], "content": m["content"]}
+                    )
 
-                        # ログ用には「画像生成したよ」だけ残す
-                        st.session_state.messages.append(
-                            {
-                                "role": "assistant",
-                                "content": "<Image Generated>",
-                                "type": "image",
-                            }
-                        )
-                        st.session_state.image_count += 1
-                        ai_response_content = "<Image Generated>"
+            # 画像も一緒に送る場合
+            if uploaded_file:
+                b64_img = base64.b64encode(uploaded_file.read()).decode("utf-8")
+                user_content = [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{b64_img}"
+                        },
+                    },
+                ]
+                messages_payload.pop()
+                messages_payload.append(
+                    {"role": "user", "content": user_content}
+                )
+
+            # ストリーミングで応答
+            stream = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages_payload,
+                stream=True,
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    full_response += chunk.choices[0].delta.content
+                    message_placeholder.markdown(full_response + "▌")
+            message_placeholder.markdown(full_response)
+            st.session_state.messages.append(
+                {"role": "assistant", "content": full_response}
+            )
+
+            # 生徒ライセンスのときだけ回数カウント＆ログ保存
+            if license_type == "student":
+                st.session_state["usage_count"] = (
+                    st.session_state.get("usage_count", 0) + 1
+                )
+                if student_id:
+                    save_log_to_sheet(student_id, prompt, full_response)
+
+            ai_response_content = full_response
+
+    except Exception as e:
+        error_msg = f"Error: {str(e)}"
+        message_placeholder.error(error_msg)
+        ai_response_content = error_msg
