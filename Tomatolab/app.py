@@ -530,7 +530,7 @@ if prompt:
             try:
                 client = OpenAI(api_key=api_key)
 
-                # ===== 画像生成モード =====
+                               # ===== 画像生成モード =====
                 if is_gen_img_req:
                     clean_prompt = prompt.strip()
 
@@ -538,29 +538,31 @@ if prompt:
                         f"Generating visual data for '{clean_prompt}'..."
                     )
 
-                    # 画像生成（base64 で受け取って表示）
+                    # 画像生成（URL で受け取る）
                     img_response = client.images.generate(
                         model="gpt-image-1",
                         prompt=f"Arknights style, anime art, {clean_prompt}",
                         size="1024x1024",
                         n=1,
-                        response_format="b64_json",
                     )
-                    image_b64 = img_response.data[0].b64_json
-                    image_bytes = base64.b64decode(image_b64)
+
+                    # URL で返ってくるのでそのまま表示
+                    image_url = img_response.data[0].url
 
                     message_placeholder.empty()
-                    st.image(image_bytes, caption=f"Generated: {clean_prompt}")
+                    st.image(image_url, caption=f"Generated: {clean_prompt}")
 
+                    # 履歴にも残す（type='image' のままでOK / URLでもbytesでもst.imageは対応）
                     st.session_state.messages.append(
                         {
                             "role": "assistant",
-                            "content": image_bytes,
+                            "content": image_url,
                             "type": "image",
                         }
                     )
                     st.session_state.image_count += 1
                     ai_response_content = "<Image Generated>"
+
 
                 # ===== 通常チャットモード =====
                 else:
