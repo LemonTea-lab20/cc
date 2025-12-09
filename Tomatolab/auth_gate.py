@@ -68,20 +68,19 @@ def security_gate():
     admin_password = st.secrets.get("ADMIN_PASSWORD", None)
 
     student_id_input = st.text_input(
-        "生徒ID（例：1111 → 1年1組11番）",
+        "ID（例：1年1組11番 → 1111 ）",
         value=st.session_state.student_id or "",
     )
     pin_input = st.text_input(
-        "PINコード（数字4桁・友だちに教えないで）", type="password"
+        "パスワード（数字4桁・友だちに教えないで）", type="password"
     )
     access_code = st.text_input("Access Code (合言葉)", type="password")
 
     st.info(
-        "・先生（管理者）は、生徒IDとPINを空のまま、**管理者用の合言葉だけ**で接続できます。\n"
-        "・生徒は、学年組番号ID・PIN・合言葉（共通）を入力して接続してください。"
+        "・ID・パスワード・合言葉を入力して接続してください。"
     )
 
-    if st.button("CONNECT / 接続開始"):
+    if st.button("CONNECT"):
         # --- 管理者判定 ---
         if admin_password and access_code == admin_password:
             st.session_state.student_id = "ADMIN"
@@ -102,18 +101,18 @@ def security_gate():
 
         sid = student_id_input.strip()
         if not sid:
-            st.error("生徒IDを入力してください。（例：1111）")
+            st.error("IDを入力してください。（例：1111）")
             st.stop()
         if validate_and_parse_id(sid) is None:
             st.error(
-                "生徒IDの形式または範囲が正しくありません。（学年1〜3 / 組1〜3 / 番号1〜40）"
+                "IDの形式または範囲が正しくありません。（学年1〜3 / 組1〜3 / 番号1〜40）"
             )
             st.stop()
 
         row_idx, rec, header = find_student_record(sid)
         if row_idx is None:
             st.error(
-                "この生徒IDは先生用シートに登録されていません。先生に確認してください。"
+                "IDは先生用シートに登録されていません。先生に確認してください。"
             )
             st.stop()
 
@@ -122,10 +121,10 @@ def security_gate():
         # PIN未設定 → 初回サインイン扱い
         if not registered_pin:
             if not pin_input.strip():
-                st.error("初回サインインです。登録したいPINコード（数字4桁）を入力してください。")
+                st.error("初回サインインです。登録したいパスワード（数字4桁）を入力してください。")
                 st.stop()
             if not validate_pin_format(pin_input):
-                st.error("PINコードは数字4桁で入力してください。")
+                st.error("パスワードは数字4桁で入力してください。")
                 st.stop()
 
             update_student_pin_and_login(row_idx, pin_input.strip(), is_new=True)
@@ -141,10 +140,10 @@ def security_gate():
         # PIN設定済み → 通常ログイン
         else:
             if not pin_input.strip():
-                st.error("PINコードを入力してください。")
+                st.error("パスワードを入力してください。")
                 st.stop()
             if pin_input.strip() != registered_pin:
-                st.error("PINコードが違います。")
+                st.error("パスワードが違います。")
                 st.stop()
 
             update_last_login_only(row_idx)
