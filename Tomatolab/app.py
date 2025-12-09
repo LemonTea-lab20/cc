@@ -406,19 +406,23 @@ IMG_PASSWORD = st.secrets.get("IMG_PASSWORD", None)
 
 if prompt := st.chat_input("Command..."):
     is_gen_img_req = prompt.startswith("/img ")
+
+    # ユーザーメッセージを履歴に追加
     st.session_state.messages.append({"role": "user", "content": prompt})
 
+    # ユーザー表示
     with st.chat_message("user"):
         st.markdown(prompt)
         if uploaded_file and not is_gen_img_req:
             st.image(uploaded_file, caption="Visual Data", width=200)
 
+    # アシスタント側
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
         ai_response_content = ""
 
-        # 使用回数・画像回数チェック
+        # ① 制限チェック
         if is_gen_img_req and st.session_state.image_count >= MAX_IMAGE_LIMIT:
             error_msg = "⚠️ Image generation limit reached."
             message_placeholder.error(error_msg)
@@ -433,7 +437,8 @@ if prompt := st.chat_input("Command..."):
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
 
-                elif api_key and has_openai_lib:
+        # ② OpenAI が使えるとき
+        elif api_key and has_openai_lib:
             try:
                 client = OpenAI(api_key=api_key)
 
@@ -454,6 +459,7 @@ if prompt := st.chat_input("Command..."):
                             {"role": "assistant", "content": error_msg}
                         )
                         ai_response_content = error_msg
+
                     else:
                         clean = prompt
                         if IMG_PASSWORD:
@@ -486,9 +492,8 @@ if prompt := st.chat_input("Command..."):
 
                 # ===== 通常チャットモード =====
                 else:
-                    # ここで先生モード / 生徒モードで性格を分岐
+                    # ★ 管理者(先生)モード / 生徒モードでプロンプトを分岐
                     if license_type == "admin":
-                        # 先生モード
                         system_prompt = """
 あなたは中学校教員のための授業設計・教材作成支援AI「Mr.トマト（先生モード）」です。
 
@@ -499,7 +504,6 @@ if prompt := st.chat_input("Command..."):
 - Helpful, logical, concise. Use $...$ for math equations.
 """
                     else:
-                        # 生徒モード
                         system_prompt = """
 あなたは中学校の授業で使う学習支援AI「Mr.トマト」です。
 
@@ -507,9 +511,10 @@ if prompt := st.chat_input("Command..."):
 - 回答は基本的に日本語で行う（ユーザーが英語で質問したときは英語も可）。
 - 宿題やテスト問題は、答えだけではなく「考え方のステップ」を重視して説明する。
 - 暴力・差別・個人情報など、不適切な内容には丁寧にお断りし、安全な話題や学びに誘導する。
-- Helpful, logical, concise. Use $...$ for math equations。
+- Helpful, logical, concise. Use $...$ for math equations.
 """
 
+                    # メッセージペイロードを構築
                     messages_payload = [
                         {"role": "system", "content": system_prompt}
                     ]
@@ -519,6 +524,7 @@ if prompt := st.chat_input("Command..."):
                                 {"role": m["role"], "content": m["content"]}
                             )
 
+                    # 画像も一緒に送る場合
                     if uploaded_file:
                         b64_img = base64.b64encode(
                             uploaded_file.read()
@@ -537,6 +543,7 @@ if prompt := st.chat_input("Command..."):
                             {"role": "user", "content": user_content}
                         )
 
+                    # ストリーミングで応答
                     stream = client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=messages_payload,
@@ -551,6 +558,7 @@ if prompt := st.chat_input("Command..."):
                         {"role": "assistant", "content": full_response}
                     )
 
+                    # 生徒ライセンスのときだけ回数カウント＆ログ保存
                     if license_type == "student":
                         st.session_state["usage_count"] = (
                             st.session_state.get("usage_count", 0) + 1
@@ -564,3 +572,17 @@ if prompt := st.chat_input("Command..."):
                 error_msg = f"Error: {str(e)}"
                 message_placeholder.error(error_msg)
                 ai_response_content = error_msg
+
+        # ③ OpenAI が使えないとき
+        else:
+            dummy_response = "PRTS Offline (API Key Missing)."
+            message_placeholder.markdown(dummy_response)
+            st.session_state.messages.append(
+                {"role": "assistant", "content": dummy_response}
+            )
+            ai_response_content = dummy_response
+
+    # 1回ごとに rerun
+    import time
+    time.sleep(0.5)
+    st.rerun()
