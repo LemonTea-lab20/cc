@@ -459,7 +459,6 @@ st.markdown(
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         if msg.get("type") == "image":
-            # 生成画像 or アップロード画像の bytes を表示
             st.image(msg["content"])
         else:
             st.markdown(msg["content"])
@@ -476,7 +475,7 @@ if prompt:
     # 送信用に、アップロード画像の bytes をスナップショットしておく
     current_image_bytes = None
     if uploaded_file is not None:
-        # UploadedFile は getvalue() で安全に bytes を取得できる
+        # UploadedFile は getvalue() で安全に bytes を取得
         current_image_bytes = uploaded_file.getvalue()
 
     # ユーザーメッセージを履歴に追加（テキスト）
@@ -489,7 +488,7 @@ if prompt:
         if (not is_gen_img_req) and (current_image_bytes is not None):
             st.image(current_image_bytes, caption="Visual Data", width=200)
 
-    # アップロード画像そのものも履歴に残したい場合（通常チャット時のみ）
+    # 通常チャット時に「ユーザーが送った画像」として履歴に残したい場合
     if (not is_gen_img_req) and (current_image_bytes is not None):
         st.session_state.messages.append(
             {"role": "user", "content": current_image_bytes, "type": "image"}
@@ -500,12 +499,18 @@ if prompt:
         message_placeholder = st.empty()
         full_response = ""
         ai_response_content = ""
+        # 正常終了したときだけ rerun したいのでフラグを作る
+        should_rerun = True
 
         # ① 制限チェック
         if is_gen_img_req and st.session_state.image_count >= MAX_IMAGE_LIMIT:
             error_msg = "⚠️ Image generation limit reached."
             message_placeholder.error(error_msg)
+            st.session_state.messages.append(
+                {"role": "assistant", "content": error_msg}
+            )
             ai_response_content = error_msg
+            should_rerun = False  # エラー時は rerun しない
 
         elif (
             not is_gen_img_req
@@ -514,7 +519,11 @@ if prompt:
         ):
             error_msg = "⚠️ Daily chat limit reached. (本日の制限回数を超えました)"
             message_placeholder.error(error_msg)
+            st.session_state.messages.append(
+                {"role": "assistant", "content": error_msg}
+            )
             ai_response_content = error_msg
+            should_rerun = False
 
         # ② OpenAI が使えるとき
         elif api_key and has_openai_lib:
@@ -635,9 +644,14 @@ if prompt:
                     ai_response_content = full_response
 
             except Exception as e:
+                # OpenAI エラー時もメッセージとして履歴に残す
                 error_msg = f"Error: {str(e)}"
                 message_placeholder.error(error_msg)
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": error_msg}
+                )
                 ai_response_content = error_msg
+                should_rerun = False  # エラー時は rerun しない
 
         # ③ OpenAI が使えないとき
         else:
@@ -647,8 +661,10 @@ if prompt:
                 {"role": "assistant", "content": dummy_response}
             )
             ai_response_content = dummy_response
+            should_rerun = False  # これも rerun しなくてよい
 
-    # 1回ごとに少し待ってから rerun
-    time.sleep(0.5)
-    st.rerun()
+    # 1回ごとに、正常なときだけ rerun する
+    if should_rerun:
+        time.sleep(0.5)
+        st.rerun()
 
