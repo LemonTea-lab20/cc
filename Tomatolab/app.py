@@ -82,7 +82,7 @@ def toggle_mode():
 
 
 with st.sidebar:
-    st.title("TERMINAL CONTROL")
+    st.title("　ㅇࡇㅇ?　")
     st.markdown(f"**ID:** `{student_id}`")
 
     license_label = "ADMIN" if license_type == "admin" else "STUDENT"
@@ -167,12 +167,12 @@ html_template = """
     <script>
         const CONFIG = {
             particleSize: 4,
-            particleMargin: 1.5,
+            particleMargin: 1,
             repulsionRadius: 80,
             repulsionForce: 3.0,
             friction: 0.12,
             returnSpeed: 0.02,
-            samplingStep: 3,
+            samplingStep: 2,
             maxDisplayRatio:0.65
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
