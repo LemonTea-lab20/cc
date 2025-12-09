@@ -18,24 +18,19 @@ st.set_page_config(
 load_dotenv()
 
 ACCENT_COLOR = "#00C8FF"
-MAX_CHAT_LIMIT = 15
-MAX_IMAGE_LIMIT = 5
+MAX_CHAT_LIMIT = 5
+MAX_IMAGE_LIMIT = 2
 
-# 画像ファイル（app.py と同じフォルダに ba.png / ro.png がある前提）
 BASE_DIR = Path(__file__).parent
-PARTICLE_IMG_DARK = "ro.png"   # 粒子用画像（ダーク）
-PARTICLE_IMG_LIGHT = "ba.png"  # 粒子用画像（ライトも同じでOKならこれ）
-WALLPAPER_IMG_DARK = None      # 必要なら "ba.png" など
+PARTICLE_IMG_DARK = "ro.png"  
+PARTICLE_IMG_LIGHT = "ba.png"  
+WALLPAPER_IMG_DARK = None     
 WALLPAPER_IMG_LIGHT = None
 
+security_gate() 
 
 # ==============================================================================
-# 1. ログイン処理（auth_gate に任せる）
-# ==============================================================================
-security_gate()  # ここを抜けた時点で logged_in == True のはず
-
-# ==============================================================================
-# 2. セッション初期化（UI 用）
+# セッション初期化
 # ==============================================================================
 if "chat_count" not in st.session_state:
     st.session_state.chat_count = 0
@@ -75,7 +70,6 @@ def get_image_base64(filename: str) -> str:
         with open(full_path, "rb") as f:
             encoded = base64.b64encode(f.read()).decode("utf-8")
         return f"data:image/png;base64,{encoded}"
-    # 見つからないときはログだけ
     print(f"[WARN] image not found: {full_path}")
     return ""
 
@@ -280,7 +274,6 @@ components.html(final_html, height=0)
 
 st.markdown(f"""
 <style>
-    /* ★ここだけ書き換え★ */
     iframe[data-testid="stIFrame"] {{
         position: fixed !important;
         top: 0 !important;
@@ -534,7 +527,7 @@ if prompt := st.chat_input("Command..."):
                         {"role": "assistant", "content": full_response}
                     )
 
-                    # 生徒ライセンスのときだけ回数カウント＆ログ保存
+                   #ログ
                     if license_type == "student":
                         st.session_state["usage_count"] = st.session_state.get("usage_count", 0) + 1
                         if student_id:
