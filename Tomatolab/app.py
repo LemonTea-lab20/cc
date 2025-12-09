@@ -485,23 +485,32 @@ if prompt := st.chat_input("Command..."):
                         ai_response_content = f"<Image Generated: {image_url}>"
 
                 # ===== 通常チャットモード =====
-                else:
-                    system_prompt = (
-                        あなたは中学校の授業で使う学習支援AI「Mr.トマト」です。
-　　　　　　　　　　　　　　- 口調は丁寧だがフランクで、中学生にもわかりやすい表現を使う。
-　　　　　　　　　　　　　　- 回答は基本的に日本語で行う（ユーザーが英語で質問したときは英語も可）。
-　　　　　　　　　　　　　　- 宿題やテスト問題は、答えだけではなく「考え方のステップ」を重視して説明する。
-　　　　　　　　　　　　　　- 暴力・差別・個人情報など、不適切な内容には丁寧にお断りし、安全な話題や学びに誘導する。
-　　　　　　　　　　　　　　-　Helpful, logical, concise. Use $...$ for math equations.
-　　　　　　　　　　　　　　　"""
-                
-                    )
-                    messages_payload = [{"role": "system", "content": system_prompt}]
-                    for m in st.session_state.messages:
-                        if m.get("type") != "image":
-                            messages_payload.append(
-                                {"role": m["role"], "content": m["content"]}
-                            )
+               else:
+   
+    if license_type == "admin":
+        # 先生モード
+        system_prompt = """
+あなたは中学校教員のための授業設計・教材作成支援AI「Mr.トマト（先生モード）」です。
+- 相手は中学校の先生が想定される。専門的な用語を使ってよい。
+- Helpful, logical, concise. Use $...$ for math equations.
+"""
+    else:
+        # 生徒モード（通常ログイン時）
+        system_prompt = """
+あなたは中学校の授業で使う学習支援AI「Mr.トマト」です。
+
+- 口調は丁寧だがフランクで、中学生にもわかりやすい表現を使う。
+- 宿題やテスト問題は、答えだけではなく「考え方のステップ」を重視して説明する。
+- 暴力・差別・個人情報など、不適切な内容には断る。
+- Helpful, logical, concise. Use $...$ for math equations.
+"""
+
+    messages_payload = [{"role": "system", "content": system_prompt}]
+    for m in st.session_state.messages:
+        if m.get("type") != "image":
+            messages_payload.append(
+                {"role": m["role"], "content": m["content"]}
+            )
 
                     if uploaded_file:
                         b64_img = base64.b64encode(uploaded_file.read()).decode("utf-8")
