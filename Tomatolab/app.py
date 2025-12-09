@@ -433,7 +433,7 @@ if prompt := st.chat_input("Command..."):
             message_placeholder.error(error_msg)
             ai_response_content = error_msg
 
-        elif api_key and has_openai_lib:
+                elif api_key and has_openai_lib:
             try:
                 client = OpenAI(api_key=api_key)
 
@@ -485,35 +485,44 @@ if prompt := st.chat_input("Command..."):
                         ai_response_content = f"<Image Generated: {image_url}>"
 
                 # ===== 通常チャットモード =====
-               else:
-   
-    if license_type == "admin":
-        # 先生モード
-        system_prompt = """
+                else:
+                    # ここで先生モード / 生徒モードで性格を分岐
+                    if license_type == "admin":
+                        # 先生モード
+                        system_prompt = """
 あなたは中学校教員のための授業設計・教材作成支援AI「Mr.トマト（先生モード）」です。
-- 相手は中学校の先生が想定される。専門的な用語を使ってよい。
+
+- 相手は中学校の先生が想定される。専門的な用語を使ってよいが、必要に応じて簡単な説明もそえる。
+- 授業アイデア・ワークシート・評価規準・コメント文など、教員向けのアウトプットを丁寧に提案する。
+- 生徒情報や個人情報に関わる内容は、具体名を出さずに一般化した形でアドバイスする。
+- 文章のトーンは「落ち着いた大人向け」で、敬体（です・ます）を基本とする。
 - Helpful, logical, concise. Use $...$ for math equations.
 """
-    else:
-        # 生徒モード（通常ログイン時）
-        system_prompt = """
+                    else:
+                        # 生徒モード
+                        system_prompt = """
 あなたは中学校の授業で使う学習支援AI「Mr.トマト」です。
 
 - 口調は丁寧だがフランクで、中学生にもわかりやすい表現を使う。
+- 回答は基本的に日本語で行う（ユーザーが英語で質問したときは英語も可）。
 - 宿題やテスト問題は、答えだけではなく「考え方のステップ」を重視して説明する。
-- 暴力・差別・個人情報など、不適切な内容には断る。
-- Helpful, logical, concise. Use $...$ for math equations.
+- 暴力・差別・個人情報など、不適切な内容には丁寧にお断りし、安全な話題や学びに誘導する。
+- Helpful, logical, concise. Use $...$ for math equations。
 """
 
-    messages_payload = [{"role": "system", "content": system_prompt}]
-    for m in st.session_state.messages:
-        if m.get("type") != "image":
-            messages_payload.append(
-                {"role": m["role"], "content": m["content"]}
-            )
+                    messages_payload = [
+                        {"role": "system", "content": system_prompt}
+                    ]
+                    for m in st.session_state.messages:
+                        if m.get("type") != "image":
+                            messages_payload.append(
+                                {"role": m["role"], "content": m["content"]}
+                            )
 
                     if uploaded_file:
-                        b64_img = base64.b64encode(uploaded_file.read()).decode("utf-8")
+                        b64_img = base64.b64encode(
+                            uploaded_file.read()
+                        ).decode("utf-8")
                         user_content = [
                             {"type": "text", "text": prompt},
                             {
@@ -542,9 +551,10 @@ if prompt := st.chat_input("Command..."):
                         {"role": "assistant", "content": full_response}
                     )
 
-                   #ログ
                     if license_type == "student":
-                        st.session_state["usage_count"] = st.session_state.get("usage_count", 0) + 1
+                        st.session_state["usage_count"] = (
+                            st.session_state.get("usage_count", 0) + 1
+                        )
                         if student_id:
                             save_log_to_sheet(student_id, prompt, full_response)
 
@@ -554,10 +564,3 @@ if prompt := st.chat_input("Command..."):
                 error_msg = f"Error: {str(e)}"
                 message_placeholder.error(error_msg)
                 ai_response_content = error_msg
-        else:
-            dummy_response = "PRTS Offline (API Key Missing)."
-            message_placeholder.markdown(dummy_response)
-            st.session_state.messages.append(
-                {"role": "assistant", "content": dummy_response}
-            )
-            ai_response_content = dummy_response
