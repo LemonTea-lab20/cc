@@ -212,7 +212,7 @@ html_template = """
     ## koko
     <script>
         const CONFIG = {
-            particleSize: 4,
+            particleSize: 5,
             particleMargin: 1,
             repulsionRadius: 80,
             repulsionForce: 2.5,
