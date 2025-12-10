@@ -412,7 +412,7 @@ st.markdown(
     /* ★メインコンテナのレイアウト調整 */
     .block-container {{
         padding-top: 120px !important;
-        padding-bottom: 260px !important; /* ★ここを増やしました（一番下のメッセージが上がります） */
+        padding-bottom: 180px !important; /* ★ここを増やしました（一番下のメッセージが上がります） */
         max-width: 900px !important;
         pointer-events: none;
     }}
