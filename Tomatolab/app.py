@@ -406,7 +406,7 @@ st.markdown(
         
         z-index: 1000;
         padding-bottom: 0px !important;
-    }
+    }}
     
     .stTextInput input, .stTextInput textarea {{
         background-color: {css_input_bg} !important;
