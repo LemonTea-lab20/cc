@@ -375,7 +375,7 @@ st.markdown(
     ) !important;
     border-top: none {css_border_color};
     z-index: 998;
-    padding-top: 20px; padding-bottom: 20px;
+    padding-top: 80px; padding-bottom: 20px;
 }}
 
     div[data-testid="stBottom"] > div {{
