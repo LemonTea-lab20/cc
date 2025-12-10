@@ -323,7 +323,7 @@ st.markdown(
     f"""
 <style>
     /* iframe（背景）の設定 */
-    iframe[data-testid="stIFrame"] {
+    iframe[data-testid="stIFrame"] {{
         position: fixed !important;
         top: 0 !important;
         left: 0 !important;
@@ -331,8 +331,8 @@ st.markdown(
         height: 100vh !important;
         z-index: 0 !important;
         border: none !important;
-        pointer-events: auto !important; /* ★ここを none から auto に変更 */
-    }
+        pointer-events: auto !important; /* ★ここを auto に戻しました（粒子が動くようになります） */
+    }}
 
     /* 全体の背景透明化 */
     .stApp {{ background: transparent !important; }}
@@ -412,7 +412,7 @@ st.markdown(
     /* ★メインコンテナのレイアウト調整 */
     .block-container {{
         padding-top: 120px !important;
-        padding-bottom: 200px !important;
+        padding-bottom: 240px !important; /* ★ここを増やしました（一番下のメッセージが上がります） */
         max-width: 900px !important;
         pointer-events: none;
     }}
@@ -452,7 +452,6 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-
 # ==============================================================================
 # 6. チャットUI
 # ==============================================================================
