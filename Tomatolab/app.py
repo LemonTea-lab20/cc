@@ -367,15 +367,17 @@ st.markdown(
         text-shadow: 0 0 10px rgba(128,128,128,0.3);
         z-index: 1000; pointer-events: none;
     }}
+    
     div[data-testid="stBottom"] {{
     background: linear-gradient(
         to top,
-        {css_mask_color} 0%,     /* いちばん下は濃い */
-        transparent 50%          /* 上に行くほど透明になる */
+        {css_mask_color} 0%,
+        transparent 50%
     ) !important;
     border-top: none {css_border_color};
     z-index: 998;
-    padding-top: 80px; padding-bottom: 20px;
+    padding-top: 20px;      /* ← ここは元に近い値でOK */
+    padding-bottom: 20px;
 }}
 
     div[data-testid="stBottom"] > div {{
@@ -393,10 +395,10 @@ st.markdown(
         border-radius: 12px !important;
     }}
     .block-container {{
-        padding-top: 100px !important;
-        padding-bottom: 220px !important;
-        pointer-events: none;
-    }}
+    padding-top: 100px !important;
+    padding-bottom: 320px !important;  /* ★ ここをぐっと増やす */
+    pointer-events: none;
+}}
     div[data-testid="stChatMessage"] {{
         background-color: {css_bg_rgba} !important;
         border: 1px solid {css_border_color};
