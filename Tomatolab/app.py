@@ -389,7 +389,7 @@ st.markdown(
             transparent 100%
         ) !important;
         z-index: 998;
-        padding-bottom: 50px;
+        padding-bottom: -10px;
     }}
 
     div[data-testid="stBottom"] > div {{
