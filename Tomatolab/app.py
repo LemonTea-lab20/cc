@@ -26,7 +26,7 @@ MAX_IMAGE_LIMIT = 2
 BASE_DIR = Path(__file__).parent
 PARTICLE_IMG_DARK = "ro.png"   # ダークモード用粒子画像
 PARTICLE_IMG_LIGHT = "ba.png"  # ライトモード用粒子画像
-WALLPAPER_IMG_DARK = None
+WALLPAPER_IMG_DARK ="ra.png"
 WALLPAPER_IMG_LIGHT = None
 
 # 画像生成用パスワード（secrets に IMG_PASSWORD を入れておく）
