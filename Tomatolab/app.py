@@ -212,14 +212,14 @@ html_template = """
     ## koko
     <script>
         const CONFIG = {
-            particleSize: 8,
-            particleMargin: 2,
-            repulsionRadius: 90,
+            particleSize: 4,
+            particleMargin: 1,
+            repulsionRadius: 80,
             repulsionForce: 2.5,
             friction: 0.12,
-            returnSpeed: 0.018,
+            returnSpeed: 0.015,
             samplingStep: 4,
-            maxDisplayRatio: 0.8
+            maxDisplayRatio: 0.7
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
         const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
