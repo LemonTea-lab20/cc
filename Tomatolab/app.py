@@ -213,8 +213,8 @@ html_template = """
     <script>
         const CONFIG = {
             particleSize: 8,
-            particleMargin: 1,
-            repulsionRadius: 80,
+            particleMargin: 2,
+            repulsionRadius: 90,
             repulsionForce: 2.5,
             friction: 0.12,
             returnSpeed: 0.018,
