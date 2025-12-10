@@ -394,7 +394,7 @@ st.markdown(
     }}
     .block-container {{
         padding-top: 100px !important;
-        padding-bottom: 160px !important;
+        padding-bottom: 220px !important;
         pointer-events: none;
     }}
     div[data-testid="stChatMessage"] {{
