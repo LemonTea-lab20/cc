@@ -212,13 +212,13 @@ html_template = """
     ## koko
     <script>
         const CONFIG = {
-            particleSize: 7,
+            particleSize: 8,
             particleMargin: 1,
             repulsionRadius: 80,
             repulsionForce: 3.0,
             friction: 0.12,
             returnSpeed: 0.02,
-            samplingStep: 3,
+            samplingStep: 6,
             maxDisplayRatio: 0.6
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
