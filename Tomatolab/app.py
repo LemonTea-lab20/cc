@@ -397,10 +397,10 @@ st.markdown(
     }}
     
     div[data-testid="stChatInput"] {{
-        width: 90% !important;
+        width: 60% !important;
         margin: 0 auto !important;
         position: fixed !important; 
-        bottom: 10px !important; /* 0pxにすると本当にベタ付けになります。10pxくらいが綺麗です */
+        bottom: 15px !important; /* 0pxにすると本当にベタ付けになります。10pxくらいが綺麗です */
         left: 50% !important;
         transform: translateX(-50%) !important; /* 真ん中に寄せるため */
         
