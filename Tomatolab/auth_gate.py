@@ -62,7 +62,7 @@ def security_gate():
         return
 
     st.title("🔒 SECURITY GATE")
-    ＃＃st.markdown("Authorized Access Only")
+    ##st.markdown("Authorized Access Only")
 
     app_password = st.secrets.get("APP_PASSWORD", None)
     admin_password = st.secrets.get("ADMIN_PASSWORD", None)
