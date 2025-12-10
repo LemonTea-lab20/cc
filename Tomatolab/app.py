@@ -29,7 +29,6 @@ PARTICLE_IMG_LIGHT = "ba.png"
 WALLPAPER_IMG_DARK ="ra.png"
 WALLPAPER_IMG_LIGHT = None
 
-（secrets に IMG_PASSWORD を入れておく）
 IMG_PASSWORD = st.secrets.get("IMG_PASSWORD", None)
 
 
