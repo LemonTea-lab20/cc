@@ -215,11 +215,11 @@ html_template = """
             particleSize: 8,
             particleMargin: 1,
             repulsionRadius: 80,
-            repulsionForce: 3.0,
+            repulsionForce: 2.5,
             friction: 0.12,
-            returnSpeed: 0.02,
+            returnSpeed: 0.018,
             samplingStep: 6,
-            maxDisplayRatio: 0.6
+            maxDisplayRatio: 0.9
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
         const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
