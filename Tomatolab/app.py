@@ -217,7 +217,7 @@ html_template = """
             repulsionForce: 3.0,
             friction: 0.12,
             returnSpeed: 0.02,
-            samplingStep: 5,
+            samplingStep: 4,
             maxDisplayRatio: 0.7
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
