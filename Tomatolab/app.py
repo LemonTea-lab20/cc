@@ -14,7 +14,7 @@ from sheets_utils import save_log_to_sheet
 # ==============================================================================
 st.set_page_config(
     layout="wide",
-    page_title="Tomato AI",
+    page_title="Tomato",
     initial_sidebar_state="collapsed",  # 起動時はサイドバー閉じ
 )
 load_dotenv()
@@ -71,10 +71,7 @@ except ImportError:
 # 3. 画像読み込み（粒子用/壁紙用）
 # ==============================================================================
 def get_image_base64(filename: str) -> str:
-    """
-    app.py と同じフォルダ、または相対パスで指定された画像を
-    base64 data URL に変換して返す。
-    """
+
     if not filename:
         return ""
     full_path = BASE_DIR / filename
@@ -126,7 +123,7 @@ with st.sidebar:
             st.caption("※画像生成を使うにはキー認証が必要です。")
 
             want_on = st.checkbox(
-                "画像生成モード（要キー）",
+                "画像生成モード",
                 value=False,
                 key="img_mode_checkbox",
             )
@@ -440,7 +437,7 @@ st.markdown(
 # 6. チャットUI
 # ==============================================================================
 st.markdown('<div class="title-mask"></div>', unsafe_allow_html=True)
-st.title("TOMATO LAB NETWORK ")
+st.title("TOMATO LAB ")
 
 license_label = "ADMIN" if license_type == "admin" else "STUDENT"
 status_text = (
@@ -569,22 +566,14 @@ if prompt:
                     # 管理者(先生)モード / 生徒モードでプロンプトを分岐
                     if license_type == "admin":
                         system_prompt = """
-あなたは中学校教員のための授業設計・教材作成支援AI「Mr.トマト（先生モード）」です。
-
-- 相手は中学校の先生が想定される。専門的な用語を使ってよいが、必要に応じて簡単な説明もそえる。
-- 授業アイデア・ワークシート・評価規準・コメント文など、教員向けのアウトプットを丁寧に提案する。
-- 生徒情報や個人情報に関わる内容は、具体名を出さずに一般化した形でアドバイスする。
-- 文章のトーンは「落ち着いた大人向け」で、敬体（です・ます）を基本とする。
+- 相手は中学校の先生が想定される。専門的な用語を使ってよい。
 - Helpful, logical, concise. Use $...$ for math equations.
 """
                     else:
                         system_prompt = """
 あなたは中学校の授業で使う学習支援AI「Mr.トマト」です。
-
-- 口調は丁寧だがフランクで、中学生にもわかりやすい表現を使う。
-- 回答は基本的に日本語で行う（ユーザーが英語で質問したときは英語も可）。
 - 宿題やテスト問題は、答えだけではなく「考え方のステップ」を重視して説明する。
-- 暴力・差別・個人情報など、不適切な内容には丁寧にお断りし、安全な話題や学びに誘導する。
+- 暴力・差別・個人情報など、不適切な内容には丁寧に断る。
 - Helpful, logical, concise. Use $...$ for math equations.
 """
 
