@@ -15,7 +15,7 @@ from sheets_utils import save_log_to_sheet
 st.set_page_config(
     layout="wide",
     page_title="Tomato",
-    initial_sidebar_state="collapsed",  # 起動時はサイドバー閉じ
+    initial_sidebar_state="collapsed",  
 )
 load_dotenv()
 
@@ -24,15 +24,15 @@ MAX_CHAT_LIMIT = 5
 MAX_IMAGE_LIMIT = 2
 
 BASE_DIR = Path(__file__).parent
-PARTICLE_IMG_DARK = "ro.png"   # ダークモード用粒子画像
-PARTICLE_IMG_LIGHT = "ba.png"  # ライトモード用粒子画像
+PARTICLE_IMG_DARK = "ro.png"  
+PARTICLE_IMG_LIGHT = "ba.png"  
 WALLPAPER_IMG_DARK ="ra.png"
 WALLPAPER_IMG_LIGHT = None
 
-# 画像生成用パスワード（secrets に IMG_PASSWORD を入れておく）
+（secrets に IMG_PASSWORD を入れておく）
 IMG_PASSWORD = st.secrets.get("IMG_PASSWORD", None)
 
-# 認証ゲート（ログイン・ライセンス種別・usage_count をここで設定）
+
 security_gate()  # ここで st.session_state.logged_in, student_id, license_type, usage_count などが入る想定
 
 # ==============================================================================
@@ -47,10 +47,8 @@ if "messages" not in st.session_state:
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = True
 if "img_mode" not in st.session_state:
-    # 画像生成モード（ON ならテキスト入力は画像プロンプトとして扱う）
     st.session_state.img_mode = False
 if "img_unlocked" not in st.session_state:
-    # この端末で画像生成キーが認証済みか
     st.session_state.img_unlocked = False
 
 license_type = st.session_state.license_type  # "student" or "admin"
@@ -68,7 +66,7 @@ except ImportError:
 
 
 # ==============================================================================
-# 3. 画像読み込み（粒子用/壁紙用）
+# 3. 画像読み込み
 # ==============================================================================
 def get_image_base64(filename: str) -> str:
 
@@ -91,13 +89,12 @@ def toggle_mode():
 
 
 with st.sidebar:
-    st.title("　ㅇࡇㅇ?　")
+    st.title("　ㅇ‐ㅇ?　")
     st.markdown(f"**ID:** `{student_id}`")
 
     license_label = "ADMIN" if license_type == "admin" else "STUDENT"
     st.markdown(f"**License:** `{license_label}`")
 
-    # usage_count は auth_gate 側で初期化・更新される
     remaining = MAX_CHAT_LIMIT - st.session_state.get("usage_count", 0)
     if remaining < 0:
         remaining = 0
@@ -106,7 +103,6 @@ with st.sidebar:
     else:
         st.metric("Remaining Chats", f"{remaining} / {MAX_CHAT_LIMIT}")
 
-    # ダークモード切り替え
     st.toggle(
         "Dark Mode",
         value=st.session_state.dark_mode,
@@ -116,7 +112,6 @@ with st.sidebar:
 
     st.divider()
 
-    # ---- 画像生成モード制御 ----
     if IMG_PASSWORD:
         st.subheader("Image Mode")
         if not st.session_state.img_unlocked:
@@ -143,20 +138,17 @@ with st.sidebar:
                         st.session_state.img_mode = False
                         st.error("キーが違います。")
         else:
-            # すでに解錠済み：普通のON/OFFトグルだけ
             st.session_state.img_mode = st.checkbox(
                 "画像生成モード",
                 value=st.session_state.img_mode,
                 key="img_mode_checkbox",
             )
     else:
-        # IMG_PASSWORD 未設定の場合は常に OFF
         st.session_state.img_mode = False
         st.session_state.img_unlocked = False
 
     st.divider()
 
-    # アップロード画像（今回のメッセージ用の入力ソース）
     uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
     if uploaded_file:
         st.image(uploaded_file, caption="Preview", use_column_width=True)
@@ -172,7 +164,7 @@ with st.sidebar:
 
 
 # ==============================================================================
-# 5. 背景（パーティクル＋CSS）
+# 5. CSS
 # ==============================================================================
 if st.session_state.dark_mode:
     particle_src = get_image_base64(PARTICLE_IMG_DARK)
@@ -452,7 +444,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 既存メッセージの描画
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         if msg.get("type") == "image":
@@ -464,28 +455,21 @@ for msg in st.session_state.messages:
 prompt = st.chat_input("Command...")
 
 if prompt:
-    # 今回のメッセージで画像生成モードかどうかを確定
     is_gen_img_req = bool(
         st.session_state.img_mode and st.session_state.img_unlocked
     )
 
-    # 送信用に、アップロード画像の bytes をスナップショットしておく
     current_image_bytes = None
     if uploaded_file is not None:
-        # UploadedFile は getvalue() で安全に bytes を取得
         current_image_bytes = uploaded_file.getvalue()
 
-    # ユーザーメッセージを履歴に追加（テキスト）
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # ユーザー表示
     with st.chat_message("user"):
         st.markdown(prompt)
-        # 画像生成モードではなく、かつ画像があるときは一緒に表示
         if (not is_gen_img_req) and (current_image_bytes is not None):
             st.image(current_image_bytes, caption="Visual Data", width=200)
 
-    # 通常チャット時に「ユーザーが送った画像」として履歴に残したい場合
     if (not is_gen_img_req) and (current_image_bytes is not None):
         st.session_state.messages.append(
             {"role": "user", "content": current_image_bytes, "type": "image"}
@@ -496,10 +480,8 @@ if prompt:
         message_placeholder = st.empty()
         full_response = ""
         ai_response_content = ""
-        # 正常終了したときだけ rerun したいのでフラグを作る
         should_rerun = True
 
-        # ① 制限チェック
         if is_gen_img_req and st.session_state.image_count >= MAX_IMAGE_LIMIT:
             error_msg = "⚠️ Image generation limit reached."
             message_placeholder.error(error_msg)
@@ -507,7 +489,7 @@ if prompt:
                 {"role": "assistant", "content": error_msg}
             )
             ai_response_content = error_msg
-            should_rerun = False  # エラー時は rerun しない
+            should_rerun = False  
 
         elif (
             not is_gen_img_req
@@ -522,12 +504,11 @@ if prompt:
             ai_response_content = error_msg
             should_rerun = False
 
-        # ② OpenAI が使えるとき
         elif api_key and has_openai_lib:
             try:
                 client = OpenAI(api_key=api_key)
 
-                               # ===== 画像生成モード =====
+                
                 if is_gen_img_req:
                     clean_prompt = prompt.strip()
 
@@ -535,7 +516,7 @@ if prompt:
                         f"Generating visual data for '{clean_prompt}'..."
                     )
 
-                    # 画像生成（URL で受け取る）
+                
                     img_response = client.images.generate(
                         model="gpt-image-1",
                         prompt=f"Arknights style, anime art, {clean_prompt}",
@@ -543,13 +524,13 @@ if prompt:
                         n=1,
                     )
 
-                    # URL で返ってくるのでそのまま表示
+                   
                     image_url = img_response.data[0].url
 
                     message_placeholder.empty()
                     st.image(image_url, caption=f"Generated: {clean_prompt}")
 
-                    # 履歴にも残す（type='image' のままでOK / URLでもbytesでもst.imageは対応）
+               
                     st.session_state.messages.append(
                         {
                             "role": "assistant",
@@ -563,7 +544,6 @@ if prompt:
 
                 # ===== 通常チャットモード =====
                 else:
-                    # 管理者(先生)モード / 生徒モードでプロンプトを分岐
                     if license_type == "admin":
                         system_prompt = """
 - 相手は中学校の先生が想定される。専門的な用語を使ってよい。
@@ -577,16 +557,14 @@ if prompt:
 - Helpful, logical, concise. Use $...$ for math equations.
 """
 
-                    # メッセージペイロードを構築
+                
                     messages_payload = [{"role": "system", "content": system_prompt}]
                     for m in st.session_state.messages:
-                        # 画像タイプのメッセージはチャット履歴から除外
                         if m.get("type") != "image":
                             messages_payload.append(
                                 {"role": m["role"], "content": m["content"]}
                             )
 
-                    # 画像も一緒に送る場合（vision）
                     if current_image_bytes is not None:
                         b64_img = base64.b64encode(current_image_bytes).decode("utf-8")
                         user_content = [
@@ -598,7 +576,7 @@ if prompt:
                                 },
                             },
                         ]
-                        # 直近の user メッセージを差し替え
+                       
                         if messages_payload and messages_payload[-1]["role"] == "user":
                             messages_payload[-1] = {
                                 "role": "user",
@@ -609,7 +587,7 @@ if prompt:
                                 {"role": "user", "content": user_content}
                             )
 
-                    # ストリーミングで応答
+                    
                     stream = client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=messages_payload,
@@ -624,7 +602,7 @@ if prompt:
                         {"role": "assistant", "content": full_response}
                     )
 
-                    # 生徒ライセンスのときだけ回数カウント＆ログ保存
+                    # ログ
                     if license_type == "student":
                         st.session_state["usage_count"] = (
                             st.session_state.get("usage_count", 0) + 1
