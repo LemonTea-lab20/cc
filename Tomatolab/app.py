@@ -162,165 +162,10 @@ with st.sidebar:
         st.rerun()
 
 
-# ==============================================================================
-# 5. CSS
-# ==============================================================================
-if st.session_state.dark_mode:
-    particle_src = get_image_base64(PARTICLE_IMG_DARK)
-    wallpaper_src = get_image_base64(WALLPAPER_IMG_DARK) if WALLPAPER_IMG_DARK else ""
-    bg_color = "#000000"
-    p_color_main = "#ffffff"
-    p_color_sub = "#444444"
-    css_text_color = "#eeeeee"
-    css_bg_rgba = "rgba(0, 0, 0, 0.6)"
-    css_input_bg = "rgba(10, 10, 10, 0.9)"
-    css_border_color = "rgba(255, 255, 255, 0.1)"
-    css_mask_color = "#000000"
-else:
-    particle_src = get_image_base64(PARTICLE_IMG_LIGHT)
-    wallpaper_src = get_image_base64(WALLPAPER_IMG_LIGHT) if WALLPAPER_IMG_LIGHT else ""
-    bg_color = "#ffffff"
-    p_color_main = "#000000"
-    p_color_sub = "#cccccc"
-    css_text_color = "#333333"
-    css_bg_rgba = "rgba(255, 255, 255, 0.7)"
-    css_input_bg = "rgba(245, 245, 245, 0.95)"
-    css_border_color = "rgba(0, 0, 0, 0.1)"
-    css_mask_color = "#ffffff"
-
-if wallpaper_src:
-    bg_style = (
-        f"background-image: url('{wallpaper_src}');"
-        "background-size: cover; background-position: center;"
-    )
-else:
-    bg_style = f"background-color: {bg_color};"
-
-html_template = """
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body { margin: 0; overflow: hidden; width: 100vw; height: 100vh; __BG_STYLE__ transition: background 0.5s ease; }
-        canvas { display: block; width: 100%; height: 100%; }
-    </style>
-</head>
-<body>
-    <canvas id="canvas"></canvas>
-    <!-- 粒子 -->
-    ## koko
-    <script>
-        const CONFIG = {
-            particleSize: 5,
-            particleMargin: 1,
-            repulsionRadius: 80,
-            repulsionForce: 2.5,
-            friction: 0.12,
-            returnSpeed: 0.015,
-            samplingStep: 4,
-            maxDisplayRatio: 0.7
-        };
-        let particles = [], mouse = { x: -1000, y: -1000 };
-        const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
-        const imageSrc = "__PARTICLE_SRC__";
-        class Particle {
-            constructor(x, y, colorType) {
-                this.originalX = x; this.originalY = y;
-                this.x = x; this.y = y;
-                this.vx = 0; this.vy = 0;
-                this.baseColor = colorType === 'main' ? '__P_COLOR_1__' : '__P_COLOR_2__';
-            }
-            update() {
-                const dx = this.x - mouse.x, dy = this.y - mouse.y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
-                if (dist < CONFIG.repulsionRadius) {
-                    const angle = Math.atan2(dy, dx);
-                    const force = (CONFIG.repulsionRadius - dist) / CONFIG.repulsionRadius;
-                    const rep = force * force * CONFIG.repulsionForce;
-                    this.vx += Math.cos(angle) * rep;
-                    this.vy += Math.sin(angle) * rep;
-                }
-                this.vx += (this.originalX - this.x) * CONFIG.returnSpeed;
-                this.vy += (this.originalY - this.y) * CONFIG.returnSpeed;
-                this.vx *= (1 - CONFIG.friction);
-                this.vy *= (1 - CONFIG.friction);
-                this.x += this.vx;
-                this.y += this.vy;
-            }
-            draw() {
-                ctx.fillStyle = this.baseColor;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, CONFIG.particleSize/2, 0, Math.PI*2);
-                ctx.fill();
-            }
-        }
-        function init() {
-            window.addEventListener('resize', resize);
-            window.addEventListener('mousemove', e => {
-                mouse.x = e.clientX; mouse.y = e.clientY;
-            });
-            window.addEventListener('touchmove', e => {
-                mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY;
-            });
-            if (imageSrc) {
-                const img = new Image();
-                img.src = imageSrc;
-                img.onload = () => { resize(); generateParticles(img); };
-            }
-        }
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        function generateParticles(img) {
-            particles = [];
-            const temp = document.createElement('canvas');
-            const tCtx = temp.getContext('2d');
-            const tW = window.innerWidth * CONFIG.maxDisplayRatio;
-            const tH = window.innerHeight * CONFIG.maxDisplayRatio;
-            const scale = Math.min(tW / img.width, tH / img.height);
-            const w = Math.floor(img.width * scale);
-            const h = Math.floor(img.height * scale);
-            temp.width = w; temp.height = h;
-            tCtx.drawImage(img, 0, 0, w, h);
-            const data = tCtx.getImageData(0, 0, w, h).data;
-            const offX = (window.innerWidth - w) / 2;
-            const offY = (window.innerHeight - h) / 2;
-            for (let y = 0; y < h; y += CONFIG.samplingStep) {
-                for (let x = 0; x < w; x += CONFIG.samplingStep) {
-                    const i = (y * w + x) * 4;
-                    if (data[i + 3] > 128) {
-                        const b = (data[i] + data[i+1] + data[i+2]) / 3;
-                        particles.push(new Particle(x+offX, y+offY, b > 128 ? 'main' : 'sub'));
-                    }
-                }
-            }
-            animate();
-        }
-        function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            particles.forEach(p => { p.update(); p.draw(); });
-            requestAnimationFrame(animate);
-        }
-        init();
-    </script>
-</body>
-</html>
-"""
-
-final_html = (
-    html_template
-    .replace("__PARTICLE_SRC__", particle_src)
-    .replace("__BG_STYLE__", bg_style)
-    .replace("__P_COLOR_1__", p_color_main)
-    .replace("__P_COLOR_2__", p_color_sub)
-)
-components.html(final_html, height=0)
-
 st.markdown(
     f"""
 <style>
+    /* iframe（背景）の設定 */
     iframe[data-testid="stIFrame"] {{
         position: fixed !important;
         top: 0 !important;
@@ -329,18 +174,23 @@ st.markdown(
         height: 100vh !important;
         z-index: 0 !important;
         border: none !important;
-        pointer-events: auto !important;
+        pointer-events: none !important; /* 背景への操作を無効化してスクロールを阻害しない */
     }}
 
+    /* 全体の背景透明化 */
     .stApp {{ background: transparent !important; }}
     header, header > div {{ background: transparent !important; }}
 
+    /* サイドバー開閉ボタン */
     button[data-testid="stSidebarCollapsedControl"] {{
         color: {css_text_color} !important;
         background-color: {css_bg_rgba} !important;
         border-radius: 5px;
         margin-top: 10px; margin-left: 10px;
+        z-index: 1001 !important; /* 最前面に */
     }}
+
+    /* サイドバー本体 */
     section[data-testid="stSidebar"] {{
         background-color: {css_input_bg} !important;
         border-right: 1px solid {css_border_color};
@@ -350,88 +200,99 @@ st.markdown(
     section[data-testid="stSidebar"] span {{
         color: {css_text_color} !important;
     }}
+
+    /* ★ヘッダー部分のマスク（修正：z-indexを上げてメッセージを隠す） */
     .title-mask {{
         position: fixed; top: 0; left: 0;
-        width: 100%; height: 70px;
+        width: 100%; height: 80px; /* 少し高さを確保 */
         background: {css_mask_color};
-        z-index: 998; pointer-events: none;
-        background: linear-gradient(to bottom, {css_mask_color} 80%, transparent);
+        background: linear-gradient(to bottom, {css_mask_color} 60%, transparent);
+        z-index: 999; /* メッセージ(997)より上にする */
+        pointer-events: none;
     }}
+
+    /* タイトル文字 */
     h1 {{
         position: fixed !important;
-        top: 10px; left: 30px; margin: 0 !important;
+        top: 15px; left: 60px; /* ハンバーガーメニューと被らない位置に */
+        margin: 0 !important;
         font-family: 'Arial', sans-serif;
-        font-weight: 900; font-size: 2rem !important;
+        font-weight: 900; font-size: 1.8rem !important;
         letter-spacing: 2px;
         color: {css_text_color} !important;
         text-shadow: 0 0 10px rgba(128,128,128,0.3);
         z-index: 1000; pointer-events: none;
     }}
-    
-    div[data-testid="stBottom"] {{
-    background: linear-gradient(
-        to top,
-        {css_mask_color} 0%,
-        transparent 50%
-    ) !important;
-    border-top: none {css_border_color};
-    z-index: 998;
-    padding-top: 20px;      /* ← ここは元に近い値でOK */
-    padding-bottom: 20px;
-}}
 
-    div[data-testid="stBottom"] > div {{
-        background: transparent !important;
+    /* チャット入力欄エリア（背景追加） */
+    div[data-testid="stBottom"] {{
+        background: linear-gradient(
+            to top,
+            {css_mask_color} 40%, 
+            transparent 100%
+        ) !important;
+        z-index: 998;
+        padding-bottom: 20px;
     }}
+    
+    /* 入力欄そのものの幅 */
     div[data-testid="stChatInput"] {{
-        width: 60% !important;
+        width: 70% !important; /* 少し広げる */
         margin: 0 auto !important;
         position: relative; z-index: 1000;
     }}
+    
+    /* 入力ボックスのデザイン */
     .stTextInput input, .stTextInput textarea {{
         background-color: {css_input_bg} !important;
         color: {css_text_color} !important;
         border: 1px solid {css_border_color} !important;
         border-radius: 12px !important;
     }}
+
+    /* ★メインコンテナ（修正箇所：ここがレイアウトの肝です） */
     .block-container {{
-    padding-top: 100px !important;
-    padding-bottom: 320px !important;  /* ★ ここをぐっと増やす */
-    pointer-events: none;
-}}
+        padding-top: 120px !important;    /* ヘッダーとかぶらないように確保 */
+        padding-bottom: 120px !important; /* ★ここを320pxから減らすことでチャットエリアが広がる */
+        max-width: 900px !important;      /* 横に広がりすぎないように制限 */
+    }}
+
+    /* チャットメッセージの吹き出し */
     div[data-testid="stChatMessage"] {{
         background-color: {css_bg_rgba} !important;
         border: 1px solid {css_border_color};
         border-left: 3px solid {ACCENT_COLOR} !important;
         border-radius: 4px;
         backdrop-filter: blur(5px);
-        width: 70%; margin: 0 auto;
-        position: relative; z-index: 997;
-        pointer-events: none !important;
+        width: 80%; /* 幅を少し広げる */
+        margin: 0 auto;
+        position: relative; 
+        z-index: 997; /* マスク(999)より下にする */
     }}
+    
+    /* 文字色など */
     div[data-testid="stChatMessage"] div,
     div[data-testid="stChatMessage"] p,
     div[data-testid="stChatMessage"] code {{
         color: {css_text_color} !important;
-        pointer-events: auto !important;
     }}
-    .katex {{ color: {css_text_color} !important; pointer-events: auto !important; }}
-    .katex-display {{ pointer-events: auto !important; }}
+    .katex {{ color: {css_text_color} !important; }}
+
+    /* 右下のステータス表示 */
     .prts-status {{
         position: fixed !important;
-        bottom: 20px; right: 30px;
+        bottom: 10px; right: 20px;
         font-family: 'Courier New', monospace;
         color: {css_text_color} !important;
         z-index: 1000;
         pointer-events: none;
-        text-align: right; font-size: 0.8em;
-        opacity: 0.8;
+        text-align: right; font-size: 0.7em;
+        opacity: 0.6;
     }}
 </style>
 """,
     unsafe_allow_html=True,
 )
-
 # ==============================================================================
 # 6. チャットUI
 # ==============================================================================
