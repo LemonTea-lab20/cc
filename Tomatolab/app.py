@@ -359,9 +359,9 @@ st.markdown(
     }}
     h1 {{
         position: fixed !important;
-        top: 15px; left: 40px; margin: 0 !important;
+        top: 10px; left: 30px; margin: 0 !important;
         font-family: 'Arial', sans-serif;
-        font-weight: 900; font-size: 2.5rem !important;
+        font-weight: 900; font-size: 2rem !important;
         letter-spacing: 2px;
         color: {css_text_color} !important;
         text-shadow: 0 0 10px rgba(128,128,128,0.3);
@@ -371,7 +371,7 @@ st.markdown(
     background: linear-gradient(
         to top,
         {css_mask_color} 0%,     /* いちばん下は濃い */
-        transparent 80%          /* 上に行くほど透明になる */
+        transparent 50%          /* 上に行くほど透明になる */
     ) !important;
     border-top: none {css_border_color};
     z-index: 998;
