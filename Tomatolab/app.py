@@ -352,14 +352,14 @@ st.markdown(
     }}
     .title-mask {{
         position: fixed; top: 0; left: 0;
-        width: 100%; height: 120px;
+        width: 100%; height: 70px;
         background: {css_mask_color};
         z-index: 998; pointer-events: none;
         background: linear-gradient(to bottom, {css_mask_color} 80%, transparent);
     }}
     h1 {{
         position: fixed !important;
-        top: 30px; left: 60px; margin: 0 !important;
+        top: 15px; left: 40px; margin: 0 !important;
         font-family: 'Arial', sans-serif;
         font-weight: 900; font-size: 2.5rem !important;
         letter-spacing: 2px;
@@ -368,11 +368,16 @@ st.markdown(
         z-index: 1000; pointer-events: none;
     }}
     div[data-testid="stBottom"] {{
-        background: {css_mask_color} !important;
-        border-top: none {css_border_color};
-        z-index: 998;
-        padding-top: 20px; padding-bottom: 20px;
-    }}
+    background: linear-gradient(
+        to top,
+        {css_mask_color} 0%,     /* いちばん下は濃い */
+        transparent 80%          /* 上に行くほど透明になる */
+    ) !important;
+    border-top: none {css_border_color};
+    z-index: 998;
+    padding-top: 20px; padding-bottom: 20px;
+}}
+
     div[data-testid="stBottom"] > div {{
         background: transparent !important;
     }}
@@ -388,8 +393,8 @@ st.markdown(
         border-radius: 12px !important;
     }}
     .block-container {{
-        padding-top: 140px !important;
-        padding-bottom: 120px !important;
+        padding-top: 100px !important;
+        padding-bottom: 80px !important;
         pointer-events: none;
     }}
     div[data-testid="stChatMessage"] {{
