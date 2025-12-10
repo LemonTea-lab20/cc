@@ -361,7 +361,7 @@ st.markdown(
     /* ヘッダー部分のマスク */
     .title-mask {{
         position: fixed; top: 0; left: 0;
-        width: 100%; height: 120px; 
+        width: 100%; height: 160px; 
         background: {css_mask_color};
         background: linear-gradient(to bottom, {css_mask_color} 60%, transparent);
         z-index: 999; 
