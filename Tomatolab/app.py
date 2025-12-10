@@ -389,7 +389,7 @@ st.markdown(
             transparent 100%
         ) !important;
         z-index: 998;
-        padding-bottom: -10px;
+        padding-bottom: 0px !important;
     }}
 
     div[data-testid="stBottom"] > div {{
@@ -397,9 +397,10 @@ st.markdown(
     }}
     
     div[data-testid="stChatInput"] {{
-        width: 70% !important;
+        width: 90% !important;
         margin: 0 auto !important;
         position: relative; z-index: 1000;
+        padding-bottom: 10px;
     }}
     
     .stTextInput input, .stTextInput textarea {{
@@ -412,8 +413,8 @@ st.markdown(
     /* ★メインコンテナのレイアウト調整 */
     .block-container {{
         padding-top: 120px !important;
-        padding-bottom: 180px !important; /* ★ここを増やしました（一番下のメッセージが上がります） */
-        max-width: 900px !important;
+        padding-bottom: 100px !important; /* ★ここを増やしました（一番下のメッセージが上がります） */
+        max-width: 1000px !important;
         pointer-events: none;
     }}
     
@@ -424,7 +425,7 @@ st.markdown(
         border-left: 3px solid {ACCENT_COLOR} !important;
         border-radius: 4px;
         backdrop-filter: blur(5px);
-        width: 80%; margin: 0 auto;
+        width: 90%; margin: 0 auto;
         position: relative; z-index: 997;
         pointer-events: none !important;
     }}
@@ -440,7 +441,7 @@ st.markdown(
     /* ステータス表示 */
     .prts-status {{
         position: fixed !important;
-        bottom: 20px; right: 30px;
+        bottom: 5px; right: 10px;
         font-family: 'Courier New', monospace;
         color: {css_text_color} !important;
         z-index: 1000;
