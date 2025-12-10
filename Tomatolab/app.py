@@ -399,9 +399,14 @@ st.markdown(
     div[data-testid="stChatInput"] {{
         width: 90% !important;
         margin: 0 auto !important;
-        position: relative; z-index: 1000;
-        padding-bottom: 10px;
-    }}
+        position: fixed !important; 
+        bottom: 10px !important; /* 0pxにすると本当にベタ付けになります。10pxくらいが綺麗です */
+        left: 50% !important;
+        transform: translateX(-50%) !important; /* 真ん中に寄せるため */
+        
+        z-index: 1000;
+        padding-bottom: 0px !important;
+    }
     
     .stTextInput input, .stTextInput textarea {{
         background-color: {css_input_bg} !important;
