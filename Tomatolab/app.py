@@ -26,7 +26,7 @@ MAX_IMAGE_LIMIT = 2
 BASE_DIR = Path(__file__).parent
 PARTICLE_IMG_DARK = "ro.png"  
 PARTICLE_IMG_LIGHT = "ba.png"  
-WALLPAPER_IMG_DARK ="ra.png"
+WALLPAPER_IMG_DARK = None
 WALLPAPER_IMG_LIGHT = None
 
 IMG_PASSWORD = st.secrets.get("IMG_PASSWORD", None)
@@ -209,6 +209,7 @@ html_template = """
 <body>
     <canvas id="canvas"></canvas>
     <!-- 粒子 -->
+    ## koko
     <script>
         const CONFIG = {
             particleSize: 7,
@@ -217,8 +218,8 @@ html_template = """
             repulsionForce: 3.0,
             friction: 0.12,
             returnSpeed: 0.02,
-            samplingStep: 4,
-            maxDisplayRatio: 0.7
+            samplingStep: 3,
+            maxDisplayRatio: 0.6
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
         const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
