@@ -218,8 +218,8 @@ html_template = """
             repulsionForce: 2.5,
             friction: 0.12,
             returnSpeed: 0.018,
-            samplingStep: 6,
-            maxDisplayRatio: 0.9
+            samplingStep: 4,
+            maxDisplayRatio: 0.8
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
         const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
