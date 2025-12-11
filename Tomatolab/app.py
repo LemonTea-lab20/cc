@@ -42,7 +42,7 @@ if "image_count" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = True
+    st.session_state.dark_mode = False
 if "img_mode" not in st.session_state:
     st.session_state.img_mode = False
 if "img_unlocked" not in st.session_state:
@@ -210,7 +210,7 @@ html_template = """
     <canvas id="canvas"></canvas>
     <script>
         const CONFIG = {
-            particleSize: 6,
+            particleSize: 5.5,
             particleMargin: 1,
             repulsionRadius: 80,
             repulsionForce: 2.5,
