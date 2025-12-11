@@ -1,4 +1,3 @@
-# sheets_utils.py
 import datetime
 import streamlit as st
 import gspread
@@ -7,8 +6,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 LOG_SHEET_NAME = "AI_Chat_Log"            # 利用ログ
 STUDENT_SHEET_NAME = "AI_Student_Master"  # アカウントマスタ
 
-# ★追加: 日本時間のタイムゾーン定義
+# ▼▼▼ 追加: 日本時間（JST）の設定 ▼▼▼
 JST = datetime.timezone(datetime.timedelta(hours=+9), 'JST')
+# ▲▲▲ 追加終わり ▲▲▲
+
 
 def get_gspread_client():
     scope = [
@@ -48,7 +49,7 @@ def get_initial_usage_count(student_id: str) -> int:
             return 0
 
         count = 0
-        # ★修正: JSTで現在の日付を取得
+        # ▼▼▼ 変更: JSTを指定して日付を取得 ▼▼▼
         target_date = datetime.datetime.now(JST).strftime("%Y-%m-%d")
         
         for row in data:
@@ -68,7 +69,7 @@ def save_log_to_sheet(student_id, input_text, output_text):
         sheet = get_log_sheet()
         if not sheet:
             return
-        # ★修正: JSTで現在の日時を取得
+        # ▼▼▼ 変更: JSTを指定して現在日時を取得 ▼▼▼
         now = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
         
         sheet.append_row([now, student_id, input_text, output_text])
@@ -108,7 +109,7 @@ def update_student_pin_and_login(row_index: int, new_pin: str, is_new: bool = Fa
     def col_idx(col_name):
         return header.index(col_name) + 1 if col_name in header else None
 
-    # ★修正: JSTで現在の日時を取得
+    # ▼▼▼ 変更: JSTを指定して現在日時を取得 ▼▼▼
     now = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
 
     pin_col = col_idx("pin")
@@ -131,6 +132,11 @@ def update_last_login_only(row_index: int):
     if not sheet:
         return
     header = sheet.row_values(1)
+    if "last_login" in header:
+        col = header.index("last_login") + 1
+        # ▼▼▼ 変更: JSTを指定して現在日時を取得 ▼▼▼
+        now = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+        sheet.update_cell(row_index, col, now)
     if "last_login" in header:
         col = header.index("last_login") + 1
         # ★修正: JSTで現在の日時を取得
