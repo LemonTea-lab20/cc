@@ -7,6 +7,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 LOG_SHEET_NAME = "AI_Chat_Log"            # 利用ログ
 STUDENT_SHEET_NAME = "AI_Student_Master"  # アカウントマスタ
 
+# ★追加: 日本時間のタイムゾーン定義
+JST = datetime.timezone(datetime.timedelta(hours=+9), 'JST')
 
 def get_gspread_client():
     scope = [
@@ -46,7 +48,9 @@ def get_initial_usage_count(student_id: str) -> int:
             return 0
 
         count = 0
-        target_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        # ★修正: JSTで現在の日付を取得
+        target_date = datetime.datetime.now(JST).strftime("%Y-%m-%d")
+        
         for row in data:
             if len(row) > 1:
                 # A列：日時文字列 / B列：student_id と想定
@@ -64,7 +68,9 @@ def save_log_to_sheet(student_id, input_text, output_text):
         sheet = get_log_sheet()
         if not sheet:
             return
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # ★修正: JSTで現在の日時を取得
+        now = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+        
         sheet.append_row([now, student_id, input_text, output_text])
     except Exception as e:
         print(f"Log Error: {e}")
@@ -102,7 +108,8 @@ def update_student_pin_and_login(row_index: int, new_pin: str, is_new: bool = Fa
     def col_idx(col_name):
         return header.index(col_name) + 1 if col_name in header else None
 
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # ★修正: JSTで現在の日時を取得
+    now = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
 
     pin_col = col_idx("pin")
     if pin_col:
@@ -126,5 +133,6 @@ def update_last_login_only(row_index: int):
     header = sheet.row_values(1)
     if "last_login" in header:
         col = header.index("last_login") + 1
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # ★修正: JSTで現在の日時を取得
+        now = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
         sheet.update_cell(row_index, col, now)
