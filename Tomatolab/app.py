@@ -1,11 +1,9 @@
 import base64
 import time
 from pathlib import Path
-
 import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
-
 from auth_gate import security_gate
 from sheets_utils import save_log_to_sheet
 
@@ -212,13 +210,13 @@ html_template = """
     <canvas id="canvas"></canvas>
     <script>
         const CONFIG = {
-            particleSize: 5,
+            particleSize: 6,
             particleMargin: 1,
             repulsionRadius: 80,
             repulsionForce: 2.5,
             friction: 0.12,
             returnSpeed: 0.015,
-            samplingStep: 4,
+            samplingStep: 3.5,
             maxDisplayRatio: 0.7
         };
         let particles = [], mouse = { x: -1000, y: -1000 };
