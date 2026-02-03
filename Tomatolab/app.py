@@ -146,7 +146,7 @@ with st.sidebar:
 
     st.divider()
 
-    uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
+    uploaded_file = st.file_uploader("画像添付", type=["png", "jpg", "jpeg"])
     if uploaded_file:
         st.image(uploaded_file, caption="Preview", use_column_width=True)
 
